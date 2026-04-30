@@ -1,0 +1,33 @@
+node_modules/
+
+# build 
+dist/
+*.tsbuildinfo
+
+# environment
+.env
+.env.*
+
+# logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+data/
+*.sqlite
+*.sqlite3
+*.db
+
+# docker 
+docker-compose.override.yml
+
+# editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.cursor/
+.AGENTS.md
+

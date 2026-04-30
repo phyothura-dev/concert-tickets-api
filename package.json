@@ -1,0 +1,38 @@
+{
+  "name": "ticket-reservation-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Concert ticket reservation backend ",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node src/server.js",
+    "dev": "tsx watch src/server.ts",
+    "dev:docker": "npm run migration:run && npm run seed && npm run dev",
+    "typeorm": "typeorm-ts-node-commonjs",
+    "migration:run": "npm run typeorm -- migration:run -d src/data-source.ts",
+    "migration:revert": "npm run typeorm -- migration:revert -d src/data-source.ts",
+    "migration:show": "npm run typeorm -- migration:show -d src/data-source.ts",
+    "migration:generate": "npm run typeorm -- migration:generate -d src/data-source.ts",
+    "seed": "tsx src/seed.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "reflect-metadata": "^0.2.2",
+    "typeorm": "^0.3.20",
+    "zod": "^4.4.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.5",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
