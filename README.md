@@ -48,41 +48,17 @@ This project was built with AI assistance using Cursor. Architectural decisions 
 
 ## Setup (Local)
 
-1) Install dependencies
-
 ```bash
-npm ci
-```
+npm install
 
-2) Create `.env`
+# create .env (use template if available)
+cp .env.development .env 2>/dev/null || echo "PORT=3000" > .env
 
-Example:
-
-```bash
-PORT=3000
-```
-
-3) Run migrations
-
-```bash
 npm run migration:run
-```
-
-4) Seed sample data (optional)
-
-```bash
 npm run seed
-```
-
-5) Start development server
-
-```bash
 npm run dev
-```
 
-Health check:
-
-```bash
+# health check
 curl http://localhost:3000/
 ```
 
