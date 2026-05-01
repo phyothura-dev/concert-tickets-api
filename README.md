@@ -4,10 +4,17 @@ Concert ticket reservation bootcamp backend assignment built with Node.js + Type
 
 ## Features
 
-- List concerts: `GET /concerts`
-- Reserve tickets (hold stock temporarily): `POST /reserve`
-- Purchase a reservation: `POST /purchase`
-- Cleanup expired reservations: `POST /cleanup`
+- List concerts and stock: `GET /concerts`
+- Ticket inventory management: `GET /tickets`, `POST /tickets`
+- Reserve tickets (temporary hold): `POST /reserve` (rate-limited)
+- Purchase
+  - reservation purchase: `POST /purchase`
+  - direct purchase (optimistic): `POST /purchase/optimistic`
+  - direct purchase (pessimistic / SQLite writer lock): `POST /purchase/pessimistic`
+- Cleanup expired reservations
+  - manual: `POST /cleanup`
+  - background: runs every minute in-process
+- Swagger UI: `GET /api-docs`
 
 ## Tech Stack
 
@@ -15,67 +22,76 @@ Concert ticket reservation bootcamp backend assignment built with Node.js + Type
 - TypeScript (strict)
 - Express
 - TypeORM
-- SQLite
-- Zod validation
+- SQLite (`better-sqlite3`)
+- Zod (validation)
+- Pino (JSON logs + AsyncLocalStorage correlationId)
+- Redis (rate limiting store via `rate-limit-redis`, fallback supported)
+- Swagger UI (`swagger-ui-express`) + Zod OpenAPI (`@asteasolutions/zod-to-openapi`)
 
 ## Project Structure
 
 ```
 src/
-  entities/        # TypeORM entities
+  entities/        # TypeORM entities (Concert, Ticket, Reservation)
   migrations/      # DB migrations (synchronize=false)
-  routes/          # Express routes (no business logic)
+  routes/          # Express routers (thin controllers)
   services/        # Business logic
-  validations/     # Zod schemas
-  app.ts           # Express app wiring
-  server.ts        # HTTP bootstrap
+  validations/     # Zod schemas (.strict())
+  middleware/      # correlation-id, logger, validate, error-handler, rate-limit
+  dtos/            # Response DTO mappers
+  lib/             # logger, request-context, errors, redis, openapi, transaction
+  jobs/            # background jobs (cleanup cron)
+  app.ts           # Express wiring (middleware order)
+  server.ts        # Bootstrap + graceful shutdown
   seed.ts          # Sample data seeder
-  errors.ts        # HTTP response helpers
 ```
-
-## AI Assisted
-
-This project was built with AI assistance using Cursor. Architectural decisions and final implementation choices were made by the author (user).
 
 ## Overview (What I Learned)
 
-- Indexing Strategy: SQLite/TypeORM indexing concepts (e.g. `concertId` index + status/time-based index for fast lookup of pending/expiring reservations).
-- ACID & Transactions: reservation flow မှာ stock update + reservation create ကို atomic ဖြစ်အောင် transaction နဲ့ handle လုပ်ခြင်း။
-- Data Consistency: negative stock / double-selling မဖြစ်အောင် validation + locking/transaction patterns ကိုနားလည်ခြင်း။
-- Migrations Only (No synchronize): schema change ကို migration နဲ့သာ manage လုပ်ပြီး reproducible database state ထိန်းသိမ်းခြင်း။
-- API Validation: Zod နဲ့ request payload တွေ validate လုပ်ပြီး predictable error response structure ထိန်းသိမ်းခြင်း။
+- Indexing strategy for hot paths (concertId + reservation status/expiry)
+- Transactions and atomic updates to prevent overselling
+- Concurrency strategies (optimistic vs pessimistic) on SQLite
+- API validation with consistent error envelopes
 
+## API Routes
+
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | `/` | Health check |
+| GET | `/concerts` | List concerts |
+| GET | `/tickets` | List ticket inventory |
+| POST | `/tickets` | Create ticket inventory |
+| POST | `/reserve` | Reserve tickets (hold stock) |
+| POST | `/purchase` | Purchase a reservation by `reservationId` |
+| POST | `/purchase/optimistic` | Direct purchase (optimistic) |
+| POST | `/purchase/pessimistic` | Direct purchase (pessimistic) |
+| POST | `/cleanup` | Cleanup expired reservations |
+| GET | `/api-docs` | Swagger UI |
 
 ## Setup (Local)
 
 ```bash
 npm install
-
-# create .env (use template if available)
-cp .env.development .env 2>/dev/null || echo "PORT=3000" > .env
+cp .env.development .env
 
 npm run migration:run
 npm run seed
 npm run dev
 
-# health check
 curl http://localhost:3000/
 ```
 
 ## Setup (Docker)
 
-Uses the `dev` target by default in `docker-compose.yml`.
-
 ```bash
 docker compose up --build
+curl http://localhost:4000/
 ```
 
-## Endpoints
+## Submission
 
-| Method | Path | Description | Request Body (JSON) | Success |
-| --- | --- | --- | --- | --- |
-| GET | `/` | Health check | - | 200 |
-| GET | `/concerts` | List concerts | - | 200 |
-| POST | `/reserve` | Create reservation (hold stock) | `{ "concertId": "uuid", "quantity": 1, "holdSeconds": 60? }` | 201 |
-| POST | `/purchase` | Purchase a reservation | `{ "reservationId": "uuid" }` | 200 |
-| POST | `/cleanup` | Cleanup expired reservations | - | 200 |
+- Stress Test Report: `docs/stress-test-report.md`
+- Swagger UI screenshot 
+  - `http://localhost:4000/api-docs`
+  - ![Swagger UI Screenshot](swagger-ui.png)
+- Logs Test Report: `docs/stress-test-report.md`

@@ -1,9 +1,9 @@
-import "reflect-metadata";
-import { randomUUID } from "node:crypto";
-import { config } from "dotenv";
-import AppDataSource from "./data-source";
-import { Concert } from "./entities/Concert";
-import { Ticket } from "./entities/Ticket";
+import 'reflect-metadata';
+import { randomUUID } from 'node:crypto';
+import { config } from 'dotenv';
+import AppDataSource from './data-source';
+import { Concert } from './entities/Concert';
+import { Ticket } from './entities/Ticket';
 
 config();
 
@@ -28,35 +28,40 @@ async function seed(): Promise<void> {
     venue: string;
     startsAt: Date;
     totalStock: number;
-    priceCents: number;
+    price: number;
+    type: 'VIP' | 'NORMAL';
   }> = [
     {
-      title: "Sample Concert - Acoustic Night",
-      venue: "Main Hall",
+      title: 'Sample Concert - Acoustic Night',
+      venue: 'Main Hall',
       startsAt: daysFromNow(7),
       totalStock: 120,
-      priceCents: 2500,
+      price: 2500,
+      type: 'NORMAL',
     },
     {
-      title: "Sample Concert - Rock Festival",
-      venue: "Outdoor Stage",
+      title: 'Sample Concert - Rock Festival',
+      venue: 'Outdoor Stage',
       startsAt: daysFromNow(14),
       totalStock: 300,
-      priceCents: 4500,
+      price: 4500,
+      type: 'VIP',
     },
     {
-      title: "Sample Concert - Jazz Evening",
-      venue: "City Theater",
+      title: 'Sample Concert - Jazz Evening',
+      venue: 'City Theater',
       startsAt: daysFromNow(21),
       totalStock: 80,
-      priceCents: 3500,
+      price: 3500,
+      type: 'NORMAL',
     },
     {
-      title: "Sample Concert - Pop Live",
-      venue: "Arena A",
+      title: 'Sample Concert - Pop Live',
+      venue: 'Arena A',
       startsAt: daysFromNow(30),
       totalStock: 500,
-      priceCents: 5000,
+      price: 5000,
+      type: 'VIP',
     },
   ];
 
@@ -75,7 +80,8 @@ async function seed(): Promise<void> {
       concertId,
       totalStock: sample.totalStock,
       remainingStock: sample.totalStock,
-      priceCents: sample.priceCents,
+      price: sample.price,
+      type: sample.type,
     });
     await ticketRepo.save(ticket);
   }
@@ -84,7 +90,6 @@ async function seed(): Promise<void> {
 }
 
 seed().catch((err: unknown) => {
-  console.error("Seed failed", err);
+  console.error('Seed failed', err);
   process.exitCode = 1;
 });
-

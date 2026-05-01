@@ -1,5 +1,7 @@
-import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, VersionColumn } from 'typeorm';
 import { Concert } from './Concert';
+
+export type TicketType = 'VIP' | 'NORMAL';
 
 @Entity({ name: 'tickets' })
 export class Ticket {
@@ -21,5 +23,11 @@ export class Ticket {
   remainingStock!: number;
 
   @Column({ type: 'integer' })
-  priceCents!: number;
+  price!: number;
+
+  @Column({ type: 'text' })
+  type!: TicketType;
+
+  @VersionColumn({ type: 'integer', default: 1 })
+  version!: number;
 }

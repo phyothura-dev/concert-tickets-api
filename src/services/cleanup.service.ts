@@ -1,43 +1,43 @@
-import AppDataSource from "../data-source";
-import { Reservation } from "../entities/Reservation";
-import { Ticket } from "../entities/Ticket";
+import { Reservation } from '../entities/Reservation';
+import { Ticket } from '../entities/Ticket';
+import { LessThanOrEqual } from 'typeorm';
+import { withTransaction } from '../lib/transaction';
 
 export class CleanupService {
   async cleanupExpiredReservations(now: Date = new Date()): Promise<{ expired: number }> {
-    const queryRunner = AppDataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
-    try {
+    return withTransaction(async (queryRunner) => {
       const expired = await queryRunner.manager.find(Reservation, {
-        where: { status: "PENDING" as const },
+        where: {
+          status: 'PENDING' as const,
+          expiresAt: LessThanOrEqual(now),
+        },
       });
 
-      let expiredCount = 0;
-      for (const r of expired) {
-        if (r.expiresAt.getTime() > now.getTime()) continue;
-
-        const ticket = await queryRunner.manager.findOne(Ticket, {
-          where: { concertId: r.concertId },
-        });
-        if (ticket) {
-          ticket.remainingStock += r.quantity;
-          await queryRunner.manager.save(Ticket, ticket);
-        }
-
-        r.status = "EXPIRED";
-        await queryRunner.manager.save(Reservation, r);
-        expiredCount += 1;
+      if (expired.length === 0) {
+        return { expired: 0 };
       }
 
-      await queryRunner.commitTransaction();
-      return { expired: expiredCount };
-    } catch (err) {
-      await queryRunner.rollbackTransaction();
-      throw err;
-    } finally {
-      await queryRunner.release();
-    }
+      for (const r of expired) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update(Ticket)
+          .set({
+            remainingStock: () => 'remainingStock + :qty',
+            version: () => 'version + 1',
+          })
+          .where('concertId = :cid', { cid: r.concertId })
+          .setParameter('qty', r.quantity)
+          .execute();
+      }
+
+      await queryRunner.manager
+        .createQueryBuilder()
+        .update(Reservation)
+        .set({ status: 'EXPIRED' })
+        .whereInIds(expired.map((r) => r.id))
+        .execute();
+
+      return { expired: expired.length };
+    });
   }
 }
-
