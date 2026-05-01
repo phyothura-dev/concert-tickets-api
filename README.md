@@ -93,5 +93,6 @@ curl http://localhost:4000/
 - Stress Test Report: `docs/stress-test-report.md`
 - Swagger UI screenshot 
   - `http://localhost:4000/api-docs`
-  - ![Swagger UI Screenshot](swagger-ui.png)
+  - ![Swagger UI Screenshot](docs/swagger-ui.png)
 - Logs Test Report: `docs/stress-test-report.md`
+
