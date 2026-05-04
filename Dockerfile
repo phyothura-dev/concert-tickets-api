@@ -33,4 +33,4 @@ RUN useradd -m -u 10001 nodeapp \
 
 USER nodeapp
 EXPOSE 3000
-CMD ["node", "dist/server.js"]
+CMD ["sh", "-c", "npm run migration:run:run-migrations && npm run seed && node dist/server.js"]

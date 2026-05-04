@@ -9,4 +9,12 @@ data
 *.sqlite
 *.sqlite3
 *.db
+*.log
+.DS_Store
+.vscode
+.idea
+
+
+
+
 
