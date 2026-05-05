@@ -1,6 +1,7 @@
 import { OpenAPIRegistry, OpenApiGeneratorV31, extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 import { reserveSchema, purchaseSchema, directPurchaseSchema } from '../validations/reservation.validation';
+import { createConcertSchema } from '../validations/concert.validation';
 import { createTicketSchema } from '../validations/ticket.validation';
 
 extendZodWithOpenApi(z);
@@ -113,6 +114,24 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
     summary: 'List concerts with stock totals',
     responses: {
       200: jsonResponse('Concert list', envelope(z.array(ConcertDtoSchema))),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/concerts',
+    tags: ['Concerts'],
+    summary: 'Create a concert (admin)',
+    request: {
+      body: {
+        required: true,
+        content: { 'application/json': { schema: createConcertSchema } },
+      },
+    },
+    responses: {
+      201: jsonResponse('Concert created', envelope(ConcertDtoSchema)),
+      400: errorResponse('Validation error'),
       500: errorResponse('Internal error'),
     },
   });

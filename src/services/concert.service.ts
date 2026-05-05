@@ -7,8 +7,8 @@ export type ConcertListItem = {
   title: string;
   venue: string;
   startsAt: string;
-  availableStock: number;
-  totalStock: number;
+  availableStock?: number;
+  totalStock?: number;
 };
 
 export class ConcertService {
@@ -44,6 +44,22 @@ export class ConcertService {
       availableStock: Number(r.availableStock),
       totalStock: Number(r.totalStock),
     }));
+  }
+
+  async createConcert(input: { title: string; venue: string; startsAt: Date }): Promise<ConcertListItem> {
+    const repo = AppDataSource.getRepository(Concert);
+    const entity = repo.create({
+      title: input.title.trim(),
+      venue: input.venue.trim(),
+      startsAt: input.startsAt,
+    });
+    const saved = await repo.save(entity);
+    return {
+      id: saved.id,
+      title: saved.title,
+      venue: saved.venue,
+      startsAt: saved.startsAt.toISOString(),
+    };
   }
 
 }

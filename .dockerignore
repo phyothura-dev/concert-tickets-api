@@ -13,6 +13,9 @@ data
 .DS_Store
 .vscode
 .idea
+docs/
+AGENTS.md
+
 
 
 
