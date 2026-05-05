@@ -15,8 +15,8 @@ export function toConcertDto(item: ConcertListItem): ConcertDto {
     title: item.title,
     venue: item.venue,
     startsAt: item.startsAt,
-    availableStock: item.availableStock,
-    totalStock: item.totalStock,
+    availableStock: item.availableStock ?? 0,
+    totalStock: item.totalStock ?? 0,
   };
 }
 
