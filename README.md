@@ -88,6 +88,15 @@ docker compose up --build
 curl http://localhost:4000/
 ```
 
+## Setup (EC2 Production)
+
+```bash
+cp .env.production.example .env.production
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Full guide: `docs/deploy-ec2.md`
+
 ## Submission
 
 - Stress Test Report: `docs/stress-test-report.md`
@@ -95,4 +104,3 @@ curl http://localhost:4000/
   - `http://localhost:4000/api-docs`
   - ![Swagger UI Screenshot](docs/swagger-ui.png)
 - Logs Test Report: `docs/stress-test-report.md`
-

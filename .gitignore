@@ -7,6 +7,7 @@ dist/
 # environment
 .env
 .env.*
+!.env*.example
 
 # logs
 logs/
@@ -30,4 +31,5 @@ Thumbs.db
 .vscode/
 .cursor/
 AGENTS.md
+.agent
 
