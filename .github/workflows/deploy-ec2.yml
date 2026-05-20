@@ -43,3 +43,8 @@ jobs:
             git pull origin main
             chmod +x deploy/ec2/deploy.sh
             ./deploy/ec2/deploy.sh
+      - name: Show secret variables
+        run: |
+          echo "EC2_HOST: ${{ secrets.EC2_HOST }}"
+          echo "EC2_USERNAME: ${{ secrets.EC2_USERNAME }}"
+          echo "EC2_PORT: ${{ secrets.EC2_PORT || 22 }}"
