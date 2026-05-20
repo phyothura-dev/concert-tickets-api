@@ -23,8 +23,6 @@ let sentryEnabled = false;
 function tryLoadSentryModule(): SentryModule | null {
   const moduleName = '@sentry/node';
   try {
-    // Dynamic require keeps build stable if dependency is not installed yet.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const loaded = require(moduleName) as SentryModule;
     return loaded;
   } catch (err) {

@@ -30,6 +30,8 @@ chmod +x deploy/ec2/deploy.sh
 ./deploy/ec2/deploy.sh
 ```
 
+If certificate does not exist yet, script starts only `app` + `redis` and tells you to issue cert first.
+
 ## 4) DNS + Security Group
 
 - Attach Elastic IP to EC2.
@@ -43,7 +45,13 @@ chmod +x deploy/ec2/issue-cert.sh
 ./deploy/ec2/issue-cert.sh <your-email>
 ```
 
-Nginx will force `http -> https`.
+After certificate is issued, run deploy again:
+
+```bash
+./deploy/ec2/deploy.sh
+```
+
+Then Nginx will force `http -> https`.
 
 ## 6) GitHub Actions Secrets
 
