@@ -33,3 +33,7 @@ Thumbs.db
 AGENTS.md
 .agent
 
+# deploy artifacts
+release/
+*.tgz
+

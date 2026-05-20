@@ -46,7 +46,6 @@ services:
     volumes:
       - ./deploy/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
-      - certbot_www:/var/www/certbot
 
   certbot:
     image: certbot/certbot:latest
@@ -56,9 +55,7 @@ services:
       - "80:80"
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
 
 volumes:
   app_data:
   redis_data:
-  certbot_www:
