@@ -19,8 +19,6 @@ jobs:
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: ${{ secrets.EC2_PORT || 22 }}
 
-          script_stop: true
-
           script: |
             set -euo pipefail
 

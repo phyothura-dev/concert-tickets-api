@@ -1,4 +1,7 @@
 node_modules/
+package-lock.json
+yarn.lock
+
 
 # build 
 dist/
@@ -34,6 +37,9 @@ AGENTS.md
 .agent
 
 # deploy artifacts
+deploy/
+.prettierignore
+.prettierrc
 release/
 *.tgz
 
