@@ -1,14 +1,15 @@
 import 'reflect-metadata';
 import { config } from 'dotenv';
 import { type Server } from 'node:http';
-import { createApp } from './app';
 import AppDataSource from './data-source';
 import { logger } from './lib/logger';
 import { getInFlightCount, isShutdownInProgress, markShuttingDown } from './lib/lifecycle';
 import { closeRedis } from './lib/redis';
 import { startCleanupCron, type CleanupCronHandle } from './jobs/cleanup.cron';
+import { closeSentry, initSentry } from './lib/sentry';
 
 config();
+initSentry();
 
 const port = Number.parseInt(process.env['PORT'] ?? '3000', 10);
 
@@ -72,12 +73,20 @@ async function gracefulShutdown(signal: NodeJS.Signals, server: Server): Promise
     logger.error({ err }, 'failed to close redis');
   }
 
+  try {
+    await closeSentry();
+  } catch (err) {
+    logger.error({ err }, 'failed to close sentry');
+  }
+
   const totalMs = Date.now() - start;
   logger.info({ totalMs }, 'shutdown complete');
   process.exit(0);
 }
 
 async function bootstrap(): Promise<void> {
+  const { createApp } = await import('./app');
+
   await AppDataSource.initialize();
   const app = createApp();
 

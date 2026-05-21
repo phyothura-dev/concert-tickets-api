@@ -9,6 +9,7 @@ import { notFoundMiddleware } from './middleware/not-found.middleware';
 import { errorHandlerMiddleware } from './middleware/error-handler.middleware';
 import { createSwaggerRouter } from './middleware/swagger.middleware';
 import { inFlightTrackerMiddleware } from './lib/lifecycle';
+import { setupSentryExpressErrorHandler } from './lib/sentry';
 
 export function createApp(): Application {
   const app = express();
@@ -37,6 +38,7 @@ export function createApp(): Application {
   app.use('/docs', swaggerRouter);
 
   app.use(notFoundMiddleware);
+  setupSentryExpressErrorHandler(app);
   app.use(errorHandlerMiddleware);
 
   return app;
