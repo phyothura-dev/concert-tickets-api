@@ -24,7 +24,7 @@ jobs:
 
             cd ~/concert-tickets-api
 
-            git pull origin main
+            git pull --ff-only origin main
 
             docker compose \
               --env-file .env.production \
