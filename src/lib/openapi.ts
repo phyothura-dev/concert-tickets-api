@@ -261,7 +261,7 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
       version: '1.0.0',
       description: 'Day 3 hardened ticket reservation backend. Errors return `{ error, message, ref }` envelope; every response carries `X-Correlation-ID`.',
     },
-    servers: [{ url: '/' }],
+    servers: [{ url: '/api/v1' }],
     tags: [{ name: 'Concerts' }, { name: 'Tickets' }, { name: 'Reservations' }, { name: 'Purchase' }, { name: 'Operations' }],
   });
 }

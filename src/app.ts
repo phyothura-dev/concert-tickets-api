@@ -24,7 +24,7 @@ export function createApp(): Application {
   app.use(express.urlencoded({ extended: false }));
 
   app.get('/', (_req: Request, res: Response) => {
-    res.status(200).json({ message: 'ticket reservation api is running' });
+    res.status(200).json({ message: 'concert tickets api is running !' });
   });
 
   v1Router.use('/concerts', concertRouter);
@@ -33,14 +33,8 @@ export function createApp(): Application {
 
   app.use('/api/v1', v1Router);
 
-  // local dev (without /api/v1 prefix) and swagger docs
-  app.use('/concerts', concertRouter);
-  app.use('/tickets', ticketRouter);
-  app.use('/', reservationRouter);
-
   const swaggerRouter = createSwaggerRouter();
   app.use('/docs', swaggerRouter);
-  app.use('/api-docs', swaggerRouter);
 
   app.use(notFoundMiddleware);
   app.use(errorHandlerMiddleware);

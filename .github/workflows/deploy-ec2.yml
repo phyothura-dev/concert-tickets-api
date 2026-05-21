@@ -30,3 +30,4 @@ jobs:
               --env-file .env.production \
               -f docker-compose.prod.yml \
               up -d --build
+            docker image prune -f
