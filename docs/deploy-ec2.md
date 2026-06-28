@@ -20,6 +20,13 @@ cp .env.production.example .env.production
 
 Set real values in `.env.production`:
 - `SERVER_NAME` => `<subdomain>.int.yt`
+- `FRONTEND_ORIGIN` => deployed frontend origin that will call the API with credentials
+- `GOOGLE_CLIENT_ID` => Google OAuth web client ID
+- `AUTH_TOKEN_NAME=auth_token`
+- `AUTH_JWT_SECRET` => random 32+ character secret
+- `AUTH_JWT_EXPIRES_IN_SECONDS=604800`
+- `AUTH_COOKIE_SECURE=true`
+- `ADMIN_GOOGLE_SUBS` => comma-separated Google `sub` values for admin users
 - `SENTRY_DSN` / `SENTRY_*`
 - keep `REDIS_URL=redis://redis:6379`
 

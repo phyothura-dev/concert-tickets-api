@@ -1,6 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 import { ConcertService } from '../services/concert.service';
 import { asyncHandler } from '../middleware/async-handler';
+import { requireAuthMiddleware } from '../middleware/auth.middleware';
+import { requireAdminMiddleware } from '../middleware/authorization.middleware';
 import { validateBody } from '../middleware/validate.middleware';
 import { toConcertDto, toConcertDtoList } from '../dtos/concert.dto';
 import { createConcertSchema, type CreateConcertInput } from '../validations/concert.validation';
@@ -14,7 +16,7 @@ concertRouter.get('/', asyncHandler(async (_req: Request, res: Response) => {
   }),
 );
 
-concertRouter.post('/', validateBody(createConcertSchema), asyncHandler(async (req: Request<unknown, unknown, CreateConcertInput>, res: Response) => {
+concertRouter.post('/', requireAuthMiddleware, requireAdminMiddleware, validateBody(createConcertSchema), asyncHandler(async (req: Request<unknown, unknown, CreateConcertInput>, res: Response) => {
   const concert = await concertService.createConcert(req.body);
   res.status(201).json({ message: 'Concert created successfully', data: toConcertDto(concert) });
 }));

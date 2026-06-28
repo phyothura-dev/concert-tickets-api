@@ -33,9 +33,10 @@ export class PurchaseService {
     }
   }
 
-  private async createPurchasedReservation(queryRunner: QueryRunner, concertId: string, quantity: number): Promise<Reservation> {
+  private async createPurchasedReservation(queryRunner: QueryRunner, concertId: string, quantity: number, userId: string): Promise<Reservation> {
     const reservation = queryRunner.manager.create(Reservation, {
       concertId,
+      userId,
       quantity,
       status: 'PURCHASED',
       expiresAt: new Date(),
@@ -44,7 +45,7 @@ export class PurchaseService {
   }
 
   // Optimistic locking
-  async purchaseOptimistic(input: DirectPurchaseInput): Promise<DirectPurchaseResult> {
+  async purchaseOptimistic(input: DirectPurchaseInput, userId: string): Promise<DirectPurchaseResult> {
     try {
       return await withTransaction(async (queryRunner) => {
         const ticket = await this.loadTicketOrThrow(input.concertId, queryRunner);
@@ -52,7 +53,7 @@ export class PurchaseService {
 
         ticket.remainingStock -= input.quantity;
         const savedTicket = await queryRunner.manager.save(Ticket, ticket);
-        const savedReservation = await this.createPurchasedReservation(queryRunner, input.concertId, input.quantity);
+        const savedReservation = await this.createPurchasedReservation(queryRunner, input.concertId, input.quantity, userId);
 
         return {
           reservationId: savedReservation.id,
@@ -72,7 +73,7 @@ export class PurchaseService {
   }
 
   // Pessimistic locking
-  async purchasePessimistic(input: DirectPurchaseInput): Promise<DirectPurchaseResult> {
+  async purchasePessimistic(input: DirectPurchaseInput, userId: string): Promise<DirectPurchaseResult> {
     try {
       return await withImmediateTransaction(async (queryRunner) => {
         const ticket = await this.loadTicketOrThrow(input.concertId, queryRunner);
@@ -93,7 +94,7 @@ export class PurchaseService {
           throw new ConflictError('LOCK_CONFLICT', 'Ticket row was contested. Please retry.');
         }
 
-        const savedReservation = await this.createPurchasedReservation(queryRunner, input.concertId, input.quantity);
+        const savedReservation = await this.createPurchasedReservation(queryRunner, input.concertId, input.quantity, userId);
 
         return {
           reservationId: savedReservation.id,

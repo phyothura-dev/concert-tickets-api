@@ -1,7 +1,9 @@
 import { OpenAPIRegistry, OpenApiGeneratorV31, extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 import { reserveSchema, purchaseSchema, directPurchaseSchema } from '../validations/reservation.validation';
+import { googleSignInSchema } from '../validations/auth.validation';
 import { createConcertSchema } from '../validations/concert.validation';
+import { registerNotificationTokenSchema, removeNotificationTokenSchema } from '../validations/notification.validation';
 import { createTicketSchema } from '../validations/ticket.validation';
 
 extendZodWithOpenApi(z);
@@ -44,6 +46,45 @@ const ConcertDtoSchema = z
     totalStock: z.number().int().nonnegative(),
   })
   .openapi('ConcertDto');
+
+const UserDtoSchema = z
+  .object({
+    id: z.string().uuid(),
+    email: z.string().email(),
+    role: z.enum(['USER', 'ADMIN']),
+    name: z.string().nullable(),
+    pictureUrl: z.string().url().nullable(),
+    emailVerified: z.boolean(),
+    lastLoginAt: z.string().datetime(),
+  })
+  .openapi('UserDto');
+
+const AuthUserResponseSchema = z
+  .object({
+    user: UserDtoSchema,
+  })
+  .openapi('AuthUserResponse');
+
+const SignOutResultSchema = z
+  .object({
+    signedOut: z.boolean(),
+  })
+  .openapi('SignOutResult');
+
+const NotificationDeviceDtoSchema = z
+  .object({
+    id: z.string().uuid(),
+    platform: z.enum(['web', 'android', 'ios']).nullable(),
+    enabled: z.boolean(),
+    lastSeenAt: z.string().datetime(),
+  })
+  .openapi('NotificationDeviceDto');
+
+const NotificationTokenDisabledSchema = z
+  .object({
+    disabled: z.boolean(),
+  })
+  .openapi('NotificationTokenDisabled');
 
 const ReservationCreatedSchema = z
   .object({
@@ -108,6 +149,51 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
   registry.register('ErrorEnvelope', ErrorEnvelopeSchema);
 
   registry.registerPath({
+    method: 'post',
+    path: '/auth/google',
+    tags: ['Auth'],
+    summary: 'Verify Google ID token and set JWT auth cookie',
+    request: {
+      body: {
+        required: true,
+        content: { 'application/json': { schema: googleSignInSchema } },
+      },
+    },
+    responses: {
+      200: jsonResponse('Signed in', envelope(AuthUserResponseSchema)),
+      400: errorResponse('Validation error'),
+      401: errorResponse('Invalid Google token'),
+      429: errorResponse('Rate limit exceeded'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/auth/me',
+    tags: ['Auth'],
+    summary: 'Return current authenticated user',
+    responses: {
+      200: jsonResponse('Current user', envelope(AuthUserResponseSchema)),
+      401: errorResponse('Authentication required'),
+      429: errorResponse('Rate limit exceeded'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/auth/logout',
+    tags: ['Auth'],
+    summary: 'Clear JWT auth cookie',
+    responses: {
+      200: jsonResponse('Signed out', envelope(SignOutResultSchema)),
+      429: errorResponse('Rate limit exceeded'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
     method: 'get',
     path: '/concerts',
     tags: ['Concerts'],
@@ -132,6 +218,8 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
     responses: {
       201: jsonResponse('Concert created', envelope(ConcertDtoSchema)),
       400: errorResponse('Validation error'),
+      401: errorResponse('Authentication required'),
+      403: errorResponse('Admin access required'),
       500: errorResponse('Internal error'),
     },
   });
@@ -163,6 +251,8 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
       400: errorResponse('Validation error'),
       404: errorResponse('Concert not found'),
       409: errorResponse('Ticket inventory already exists for concert'),
+      401: errorResponse('Authentication required'),
+      403: errorResponse('Admin access required'),
     },
   });
 
@@ -182,6 +272,7 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
       400: errorResponse('Validation error'),
       404: errorResponse('Concert/ticket not found'),
       409: errorResponse('Conflict (e.g. NOT_ENOUGH_STOCK)'),
+      401: errorResponse('Authentication required'),
       429: errorResponse('Rate limit exceeded'),
     },
   });
@@ -202,6 +293,7 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
       400: errorResponse('Validation error'),
       404: errorResponse('Reservation not found'),
       409: errorResponse('Reservation not pending or expired'),
+      401: errorResponse('Authentication required'),
     },
   });
 
@@ -221,6 +313,7 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
       400: errorResponse('Validation error'),
       404: errorResponse('Ticket not found'),
       409: errorResponse('VERSION_CONFLICT or NOT_ENOUGH_STOCK'),
+      401: errorResponse('Authentication required'),
     },
   });
 
@@ -240,6 +333,7 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
       400: errorResponse('Validation error'),
       404: errorResponse('Ticket not found'),
       409: errorResponse('LOCK_CONFLICT or NOT_ENOUGH_STOCK'),
+      401: errorResponse('Authentication required'),
     },
   });
 
@@ -253,15 +347,55 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
     },
   });
 
+  registry.registerPath({
+    method: 'post',
+    path: '/notifications/register-token',
+    tags: ['Notifications'],
+    summary: 'Register or refresh an FCM token for the current user',
+    request: {
+      body: {
+        required: true,
+        content: { 'application/json': { schema: registerNotificationTokenSchema } },
+      },
+    },
+    responses: {
+      200: jsonResponse('Notification token registered', envelope(NotificationDeviceDtoSchema)),
+      400: errorResponse('Validation error'),
+      401: errorResponse('Authentication required'),
+      429: errorResponse('Rate limit exceeded'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'delete',
+    path: '/notifications/register-token',
+    tags: ['Notifications'],
+    summary: 'Disable an FCM token for the current user',
+    request: {
+      body: {
+        required: true,
+        content: { 'application/json': { schema: removeNotificationTokenSchema } },
+      },
+    },
+    responses: {
+      200: jsonResponse('Notification token disabled', envelope(NotificationTokenDisabledSchema)),
+      400: errorResponse('Validation error'),
+      401: errorResponse('Authentication required'),
+      429: errorResponse('Rate limit exceeded'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
   const generator = new OpenApiGeneratorV31(registry.definitions);
   return generator.generateDocument({
     openapi: '3.1.0',
     info: {
-      title: 'Ticket Reservation API',
+      title: 'Concert Tickets API',
       version: '1.0.0',
       description: 'Day 3 hardened ticket reservation backend. Errors return `{ error, message, ref }` envelope; every response carries `X-Correlation-ID`.',
     },
     servers: [{ url: '/api/v1' }],
-    tags: [{ name: 'Concerts' }, { name: 'Tickets' }, { name: 'Reservations' }, { name: 'Purchase' }, { name: 'Operations' }],
+    tags: [{ name: 'Auth' }, { name: 'Concerts' }, { name: 'Tickets' }, { name: 'Reservations' }, { name: 'Purchase' }, { name: 'Notifications' }, { name: 'Operations' }],
   });
 }

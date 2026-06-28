@@ -14,6 +14,16 @@ Concert ticket reservation bootcamp backend assignment built with Node.js + Type
 - Cleanup expired reservations
   - manual: `POST /cleanup`
   - background: runs every minute in-process
+- Google Sign-In JWT auth
+  - `POST /auth/google`
+  - `GET /auth/me`
+  - `POST /auth/logout`
+- FCM notification token management
+  - `POST /notifications/register-token`
+  - `DELETE /notifications/register-token`
+- Role-based access
+  - `POST /concerts` and `POST /tickets` require an authenticated admin user
+  - `POST /reserve`, `POST /purchase`, `POST /purchase/optimistic`, `POST /purchase/pessimistic` require any authenticated user
 - Swagger UI: `GET /api-docs`
 
 ## Tech Stack
@@ -66,6 +76,11 @@ src/
 | POST | `/purchase/optimistic` | Direct purchase (optimistic) |
 | POST | `/purchase/pessimistic` | Direct purchase (pessimistic) |
 | POST | `/cleanup` | Cleanup expired reservations |
+| POST | `/auth/google` | Verify Google ID token and set JWT auth cookie |
+| GET | `/auth/me` | Get authenticated user |
+| POST | `/auth/logout` | Clear JWT auth cookie |
+| POST | `/notifications/register-token` | Register/refresh current user's FCM token |
+| DELETE | `/notifications/register-token` | Disable current user's FCM token |
 | GET | `/api-docs` | Swagger UI |
 
 ## Setup (Local)
@@ -73,6 +88,8 @@ src/
 ```bash
 npm install
 cp .env.development .env
+
+# Set GOOGLE_CLIENT_ID, AUTH_JWT_SECRET, AUTH_JWT_EXPIRES_IN_SECONDS, and ADMIN_GOOGLE_SUBS before Google auth testing.
 
 npm run migration:run
 npm run seed

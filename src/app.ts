@@ -1,9 +1,13 @@
 import express, { type Application, type Request, type Response } from 'express';
+import cookieParser from 'cookie-parser';
 import { Router } from 'express';
+import { authRouter } from './routes/auth.routes';
 import { concertRouter } from './routes/concert.routes';
+import { notificationRouter } from './routes/notification.routes';
 import { reservationRouter } from './routes/reservation.routes';
 import { ticketRouter } from './routes/ticket.routes';
 import { correlationIdMiddleware } from './middleware/correlation-id.middleware';
+import { corsMiddleware } from './middleware/cors.middleware';
 import { requestLoggerMiddleware } from './middleware/request-logger.middleware';
 import { notFoundMiddleware } from './middleware/not-found.middleware';
 import { errorHandlerMiddleware } from './middleware/error-handler.middleware';
@@ -20,7 +24,9 @@ export function createApp(): Application {
   app.use(correlationIdMiddleware);
   app.use(requestLoggerMiddleware);
   app.use(inFlightTrackerMiddleware);
+  app.use(corsMiddleware);
 
+  app.use(cookieParser());
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
 
@@ -28,7 +34,9 @@ export function createApp(): Application {
     res.status(200).json({ message: 'concert tickets api is running !' });
   });
 
+  v1Router.use('/auth', authRouter);
   v1Router.use('/concerts', concertRouter);
+  v1Router.use('/notifications', notificationRouter);
   v1Router.use('/tickets', ticketRouter);
   v1Router.use('/', reservationRouter);
 

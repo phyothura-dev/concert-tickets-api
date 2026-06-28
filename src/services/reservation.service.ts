@@ -15,7 +15,7 @@ export type PurchaseResult = {
 };
 
 export class ReservationService {
-  async reserve(input: ReserveInput): Promise<ReserveResult> {
+  async reserve(input: ReserveInput, userId: string): Promise<ReserveResult> {
     const holdSeconds = input.holdSeconds ?? 120;
     return withTransaction(async (queryRunner) => {
       const expiresAt = new Date(Date.now() + holdSeconds * 1000);
@@ -45,6 +45,7 @@ export class ReservationService {
 
       const reservation = queryRunner.manager.create(Reservation, {
         concertId: input.concertId,
+        userId,
         quantity: input.quantity,
         status: 'PENDING',
         expiresAt,

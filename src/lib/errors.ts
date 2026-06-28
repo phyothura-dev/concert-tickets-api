@@ -55,6 +55,26 @@ export class RateLimitError extends AppError {
   }
 }
 
+export class AuthenticationError extends AppError {
+  readonly statusCode = 401;
+  readonly code: string;
+
+  constructor(message = 'Authentication required', details: ErrorDetails = null, code = 'AUTHENTICATION_REQUIRED') {
+    super(message, details);
+    this.code = code;
+  }
+}
+
+export class ForbiddenError extends AppError {
+  readonly statusCode = 403;
+  readonly code: string;
+
+  constructor(message = 'Forbidden', details: ErrorDetails = null, code = 'FORBIDDEN') {
+    super(message, details);
+    this.code = code;
+  }
+}
+
 export class InternalError extends AppError {
   readonly statusCode = 500;
   readonly code: string;

@@ -8,6 +8,7 @@ import {
   PrimaryGeneratedColumn,
 } from "typeorm";
 import { Concert } from "./Concert";
+import { User } from "./User";
 
 export type ReservationStatus = "PENDING" | "PURCHASED" | "EXPIRED";
 
@@ -21,9 +22,17 @@ export class Reservation {
   @Column({ type: "text" })
   concertId!: string;
 
+  @Index()
+  @Column({ type: "text", nullable: true })
+  userId!: string | null;
+
   @ManyToOne(() => Concert, { onDelete: "CASCADE" })
   @JoinColumn({ name: "concertId" })
   concert!: Concert;
+
+  @ManyToOne(() => User, (user) => user.reservations, { nullable: true, onDelete: "SET NULL" })
+  @JoinColumn({ name: "userId" })
+  user!: User | null;
 
   @Column({ type: "integer" })
   quantity!: number;

@@ -1,5 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { asyncHandler } from '../middleware/async-handler';
+import { requireAuthMiddleware } from '../middleware/auth.middleware';
+import { requireAdminMiddleware } from '../middleware/authorization.middleware';
 import { validateBody } from '../middleware/validate.middleware';
 import { TicketService } from '../services/ticket.service';
 import { toTicketDto, toTicketDtoList } from '../dtos/ticket.dto';
@@ -14,7 +16,7 @@ ticketRouter.get('/', asyncHandler(async (_req: Request, res: Response) => {
   }),
 );
 
-ticketRouter.post('/', validateBody(createTicketSchema), asyncHandler(async (req: Request<unknown, unknown, CreateTicketInput>, res: Response) => {
+ticketRouter.post('/', requireAuthMiddleware, requireAdminMiddleware, validateBody(createTicketSchema), asyncHandler(async (req: Request<unknown, unknown, CreateTicketInput>, res: Response) => {
   const ticket = await ticketService.createTicket(req.body);
   res.status(201).json({message: 'Ticket inventory created successfully',data: toTicketDto(ticket)});
 }));
