@@ -2,9 +2,10 @@ import { OpenAPIRegistry, OpenApiGeneratorV31, extendZodWithOpenApi } from '@ast
 import { z } from 'zod';
 import { reserveSchema, purchaseSchema, directPurchaseSchema } from '../validations/reservation.validation';
 import { googleSignInSchema } from '../validations/auth.validation';
-import { createConcertSchema } from '../validations/concert.validation';
+import { categoryParamsSchema, createCategorySchema, updateCategorySchema } from '../validations/category.validation';
+import { concertParamsSchema, createConcertSchema, updateConcertSchema } from '../validations/concert.validation';
 import { registerNotificationTokenSchema, removeNotificationTokenSchema } from '../validations/notification.validation';
-import { createTicketSchema } from '../validations/ticket.validation';
+import { createTicketSchema, ticketParamsSchema, updateTicketSchema } from '../validations/ticket.validation';
 
 extendZodWithOpenApi(z);
 
@@ -36,12 +37,22 @@ const TicketDtoSchema = z
   })
   .openapi('TicketDto');
 
+const CategoryDtoSchema = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string(),
+    slug: z.string(),
+  })
+  .openapi('CategoryDto');
+
 const ConcertDtoSchema = z
   .object({
     id: z.string().uuid(),
     title: z.string(),
     venue: z.string(),
     startsAt: z.string().datetime(),
+    categoryId: z.string().uuid().nullable(),
+    category: CategoryDtoSchema.nullable(),
     availableStock: z.number().int().nonnegative(),
     totalStock: z.number().int().nonnegative(),
   })
@@ -115,6 +126,12 @@ const CleanupResultSchema = z
     expired: z.number().int().nonnegative(),
   })
   .openapi('CleanupResult');
+
+const DeleteResultSchema = z
+  .object({
+    deleted: z.literal(true),
+  })
+  .openapi('DeleteResult');
 
 function envelope<T extends z.ZodTypeAny>(dataSchema: T) {
   return z.object({
@@ -226,6 +243,151 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
 
   registry.registerPath({
     method: 'get',
+    path: '/categories',
+    tags: ['Categories'],
+    summary: 'List concert categories',
+    responses: {
+      200: jsonResponse('Category list', envelope(z.array(CategoryDtoSchema))),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/categories',
+    tags: ['Categories'],
+    summary: 'Create a concert category (admin)',
+    request: {
+      body: {
+        required: true,
+        content: { 'application/json': { schema: createCategorySchema } },
+      },
+    },
+    responses: {
+      201: jsonResponse('Category created', envelope(CategoryDtoSchema)),
+      400: errorResponse('Validation error'),
+      401: errorResponse('Authentication required'),
+      403: errorResponse('Admin access required'),
+      409: errorResponse('Category slug already exists'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/categories/{id}',
+    tags: ['Categories'],
+    summary: 'Get a concert category by id',
+    request: {
+      params: categoryParamsSchema,
+    },
+    responses: {
+      200: jsonResponse('Category', envelope(CategoryDtoSchema)),
+      400: errorResponse('Validation error'),
+      404: errorResponse('Category not found'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'patch',
+    path: '/categories/{id}',
+    tags: ['Categories'],
+    summary: 'Update a concert category (admin)',
+    request: {
+      params: categoryParamsSchema,
+      body: {
+        required: true,
+        content: { 'application/json': { schema: updateCategorySchema } },
+      },
+    },
+    responses: {
+      200: jsonResponse('Category updated', envelope(CategoryDtoSchema)),
+      400: errorResponse('Validation error'),
+      401: errorResponse('Authentication required'),
+      403: errorResponse('Admin access required'),
+      404: errorResponse('Category not found'),
+      409: errorResponse('Category slug already exists'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'delete',
+    path: '/categories/{id}',
+    tags: ['Categories'],
+    summary: 'Delete a concert category and clear it from concerts (admin)',
+    request: {
+      params: categoryParamsSchema,
+    },
+    responses: {
+      200: jsonResponse('Category deleted', envelope(DeleteResultSchema)),
+      400: errorResponse('Validation error'),
+      401: errorResponse('Authentication required'),
+      403: errorResponse('Admin access required'),
+      404: errorResponse('Category not found'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/concerts/{id}',
+    tags: ['Concerts'],
+    summary: 'Get a concert by id with stock totals',
+    request: {
+      params: concertParamsSchema,
+    },
+    responses: {
+      200: jsonResponse('Concert', envelope(ConcertDtoSchema)),
+      400: errorResponse('Validation error'),
+      404: errorResponse('Concert not found'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'patch',
+    path: '/concerts/{id}',
+    tags: ['Concerts'],
+    summary: 'Update a concert (admin)',
+    request: {
+      params: concertParamsSchema,
+      body: {
+        required: true,
+        content: { 'application/json': { schema: updateConcertSchema } },
+      },
+    },
+    responses: {
+      200: jsonResponse('Concert updated', envelope(ConcertDtoSchema)),
+      400: errorResponse('Validation error'),
+      401: errorResponse('Authentication required'),
+      403: errorResponse('Admin access required'),
+      404: errorResponse('Concert not found'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'delete',
+    path: '/concerts/{id}',
+    tags: ['Concerts'],
+    summary: 'Delete a concert and related inventory/reservations (admin)',
+    request: {
+      params: concertParamsSchema,
+    },
+    responses: {
+      200: jsonResponse('Concert deleted', envelope(DeleteResultSchema)),
+      400: errorResponse('Validation error'),
+      401: errorResponse('Authentication required'),
+      403: errorResponse('Admin access required'),
+      404: errorResponse('Concert not found'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
     path: '/tickets',
     tags: ['Tickets'],
     summary: 'List ticket inventories ',
@@ -253,6 +415,64 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
       409: errorResponse('Ticket inventory already exists for concert'),
       401: errorResponse('Authentication required'),
       403: errorResponse('Admin access required'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/tickets/{id}',
+    tags: ['Tickets'],
+    summary: 'Get ticket inventory by id',
+    request: {
+      params: ticketParamsSchema,
+    },
+    responses: {
+      200: jsonResponse('Ticket inventory', envelope(TicketDtoSchema)),
+      400: errorResponse('Validation error'),
+      404: errorResponse('Ticket not found'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'patch',
+    path: '/tickets/{id}',
+    tags: ['Tickets'],
+    summary: 'Update ticket inventory (admin)',
+    request: {
+      params: ticketParamsSchema,
+      body: {
+        required: true,
+        content: { 'application/json': { schema: updateTicketSchema } },
+      },
+    },
+    responses: {
+      200: jsonResponse('Ticket inventory updated', envelope(TicketDtoSchema)),
+      400: errorResponse('Validation error'),
+      401: errorResponse('Authentication required'),
+      403: errorResponse('Admin access required'),
+      404: errorResponse('Ticket not found'),
+      409: errorResponse('Stock conflict'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'delete',
+    path: '/tickets/{id}',
+    tags: ['Tickets'],
+    summary: 'Delete ticket inventory (admin)',
+    request: {
+      params: ticketParamsSchema,
+    },
+    responses: {
+      200: jsonResponse('Ticket inventory deleted', envelope(DeleteResultSchema)),
+      400: errorResponse('Validation error'),
+      401: errorResponse('Authentication required'),
+      403: errorResponse('Admin access required'),
+      404: errorResponse('Ticket not found'),
+      409: errorResponse('Pending reservations exist'),
+      500: errorResponse('Internal error'),
     },
   });
 
@@ -396,6 +616,6 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
       description: 'Day 3 hardened ticket reservation backend. Errors return `{ error, message, ref }` envelope; every response carries `X-Correlation-ID`.',
     },
     servers: [{ url: '/api/v1' }],
-    tags: [{ name: 'Auth' }, { name: 'Concerts' }, { name: 'Tickets' }, { name: 'Reservations' }, { name: 'Purchase' }, { name: 'Notifications' }, { name: 'Operations' }],
+    tags: [{ name: 'Auth' }, { name: 'Categories' }, { name: 'Concerts' }, { name: 'Tickets' }, { name: 'Reservations' }, { name: 'Purchase' }, { name: 'Notifications' }, { name: 'Operations' }],
   });
 }

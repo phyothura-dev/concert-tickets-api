@@ -2,6 +2,7 @@ import express, { type Application, type Request, type Response } from 'express'
 import cookieParser from 'cookie-parser';
 import { Router } from 'express';
 import { authRouter } from './routes/auth.routes';
+import { categoryRouter } from './routes/category.routes';
 import { concertRouter } from './routes/concert.routes';
 import { notificationRouter } from './routes/notification.routes';
 import { reservationRouter } from './routes/reservation.routes';
@@ -35,6 +36,7 @@ export function createApp(): Application {
   });
 
   v1Router.use('/auth', authRouter);
+  v1Router.use('/categories', categoryRouter);
   v1Router.use('/concerts', concertRouter);
   v1Router.use('/notifications', notificationRouter);
   v1Router.use('/tickets', ticketRouter);
