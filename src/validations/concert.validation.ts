@@ -6,6 +6,7 @@ export const createConcertSchema = z
     venue: z.string().min(1, 'venue is required').max(500, 'venue is too long'),
     startsAt: z.coerce.date({ message: 'startsAt must be a valid date' }),
     categoryId: z.string().uuid('categoryId must be a valid UUID').nullable().optional(),
+    singerIds: z.array(z.string().uuid('singerIds must contain valid UUIDs')).max(50, 'too many singers').optional(),
   })
   .strict();
 

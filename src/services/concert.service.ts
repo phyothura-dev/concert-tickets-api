@@ -2,10 +2,12 @@ import AppDataSource from '../data-source';
 import { Category } from '../entities/Category';
 import { Concert } from '../entities/Concert';
 import { Reservation } from '../entities/Reservation';
+import { Singer } from '../entities/Singer';
 import { Ticket } from '../entities/Ticket';
 import { NotFoundError } from '../lib/errors';
 import { withTransaction } from '../lib/transaction';
 import type { CreateConcertInput, UpdateConcertInput } from '../validations/concert.validation';
+import { In, type EntityManager } from 'typeorm';
 
 export type ConcertListItem = {
   id: string;
@@ -18,6 +20,14 @@ export type ConcertListItem = {
     name: string;
     slug: string;
   } | null;
+  singerIds?: string[];
+  singers?: {
+    id: string;
+    name: string;
+    title: string;
+    createdAt: string;
+    updatedAt: string;
+  }[];
   availableStock?: number;
   totalStock?: number;
 };
@@ -65,7 +75,11 @@ export class ConcertService {
         totalStock: string;
       }>();
 
-    return rows.map((r) => ({
+    const singersByConcertId = await this.getSingersByConcertId(rows.map((row) => row.id));
+
+    return rows.map((r) => {
+      const singers = singersByConcertId.get(r.id) ?? [];
+      return {
       id: r.id,
       title: r.title,
       venue: r.venue,
@@ -75,32 +89,120 @@ export class ConcertService {
         r.categoryId && r.categoryName && r.categorySlug
           ? { id: r.categoryId, name: r.categoryName, slug: r.categorySlug }
           : null,
+      singerIds: singers.map((singer) => singer.id),
+      singers,
       availableStock: Number(r.availableStock),
       totalStock: Number(r.totalStock),
-    }));
+      };
+    });
   }
 
-  private async ensureCategoryExistsOrThrow(categoryId: string): Promise<void> {
-    const exists = await AppDataSource.getRepository(Category).exists({ where: { id: categoryId } });
+  private async getSingersByConcertId(concertIds: string[]): Promise<Map<string, NonNullable<ConcertListItem['singers']>>> {
+    if (concertIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await AppDataSource.getRepository(Singer)
+      .createQueryBuilder('s')
+      .innerJoin('concert_singers', 'cs', 'cs.singerId = s.id')
+      .select('cs.concertId', 'concertId')
+      .addSelect('s.id', 'id')
+      .addSelect('s.name', 'name')
+      .addSelect('s.title', 'title')
+      .addSelect('s.createdAt', 'createdAt')
+      .addSelect('s.updatedAt', 'updatedAt')
+      .where('cs.concertId IN (:...concertIds)', { concertIds })
+      .orderBy('s.name', 'ASC')
+      .getRawMany<{
+        concertId: string;
+        id: string;
+        name: string;
+        title: string;
+        createdAt: string;
+        updatedAt: string;
+      }>();
+
+    const singersByConcertId = new Map<string, NonNullable<ConcertListItem['singers']>>();
+    for (const row of rows) {
+      const singers = singersByConcertId.get(row.concertId) ?? [];
+      singers.push({
+        id: row.id,
+        name: row.name,
+        title: row.title,
+        createdAt: new Date(row.createdAt).toISOString(),
+        updatedAt: new Date(row.updatedAt).toISOString(),
+      });
+      singersByConcertId.set(row.concertId, singers);
+    }
+
+    return singersByConcertId;
+  }
+
+  private async ensureCategoryExistsOrThrow(categoryId: string, manager = AppDataSource.manager): Promise<void> {
+    const exists = await manager.exists(Category, { where: { id: categoryId } });
     if (!exists) {
       throw new NotFoundError('Category not found', null, 'CATEGORY_NOT_FOUND');
     }
   }
 
-  async createConcert(input: CreateConcertInput): Promise<ConcertListItem> {
-    const repo = AppDataSource.getRepository(Concert);
-    if (input.categoryId) {
-      await this.ensureCategoryExistsOrThrow(input.categoryId);
+  private uniqueSingerIds(singerIds: string[]): string[] {
+    return [...new Set(singerIds)];
+  }
+
+  private async ensureSingersExistOrThrow(singerIds: string[], manager: EntityManager): Promise<string[]> {
+    const uniqueIds = this.uniqueSingerIds(singerIds);
+    if (uniqueIds.length === 0) {
+      return [];
     }
 
-    const entity = repo.create({
-      title: input.title.trim(),
-      venue: input.venue.trim(),
-      startsAt: input.startsAt,
-      categoryId: input.categoryId ?? null,
+    const singers = await manager.findBy(Singer, { id: In(uniqueIds) });
+    if (singers.length !== uniqueIds.length) {
+      throw new NotFoundError('One or more singers were not found', { singerIds: uniqueIds }, 'SINGER_NOT_FOUND');
+    }
+
+    return uniqueIds;
+  }
+
+  private async replaceConcertSingers(manager: EntityManager, concertId: string, singerIds: string[]): Promise<void> {
+    await manager
+      .createQueryBuilder()
+      .delete()
+      .from('concert_singers')
+      .where('concertId = :concertId', { concertId })
+      .execute();
+
+    if (singerIds.length === 0) {
+      return;
+    }
+
+    await manager
+      .createQueryBuilder()
+      .insert()
+      .into('concert_singers')
+      .values(singerIds.map((singerId) => ({ concertId, singerId })))
+      .execute();
+  }
+
+  async createConcert(input: CreateConcertInput): Promise<ConcertListItem> {
+    const concertId = await withTransaction(async (queryRunner) => {
+      if (input.categoryId) {
+        await this.ensureCategoryExistsOrThrow(input.categoryId, queryRunner.manager);
+      }
+      const singerIds = await this.ensureSingersExistOrThrow(input.singerIds ?? [], queryRunner.manager);
+
+      const entity = queryRunner.manager.create(Concert, {
+        title: input.title.trim(),
+        venue: input.venue.trim(),
+        startsAt: input.startsAt,
+        categoryId: input.categoryId ?? null,
+      });
+      const saved = await queryRunner.manager.save(entity);
+      await this.replaceConcertSingers(queryRunner.manager, saved.id, singerIds);
+
+      return saved.id;
     });
-    const saved = await repo.save(entity);
-    return this.getConcertListItemOrThrow(saved.id);
+
+    return this.getConcertListItemOrThrow(concertId);
   }
 
   async getConcert(id: string): Promise<ConcertListItem> {
@@ -108,30 +210,36 @@ export class ConcertService {
   }
 
   async updateConcert(id: string, input: UpdateConcertInput): Promise<ConcertListItem> {
-    const repo = AppDataSource.getRepository(Concert);
-    const concert = await repo.findOne({ where: { id } });
+    await withTransaction(async (queryRunner) => {
+      const concert = await queryRunner.manager.findOne(Concert, { where: { id } });
 
-    if (!concert) {
-      throw new NotFoundError('Concert not found', null, 'CONCERT_NOT_FOUND');
-    }
-
-    if (input.title !== undefined) {
-      concert.title = input.title.trim();
-    }
-    if (input.venue !== undefined) {
-      concert.venue = input.venue.trim();
-    }
-    if (input.startsAt !== undefined) {
-      concert.startsAt = input.startsAt;
-    }
-    if (input.categoryId !== undefined) {
-      if (input.categoryId) {
-        await this.ensureCategoryExistsOrThrow(input.categoryId);
+      if (!concert) {
+        throw new NotFoundError('Concert not found', null, 'CONCERT_NOT_FOUND');
       }
-      concert.categoryId = input.categoryId;
-    }
 
-    await repo.save(concert);
+      if (input.title !== undefined) {
+        concert.title = input.title.trim();
+      }
+      if (input.venue !== undefined) {
+        concert.venue = input.venue.trim();
+      }
+      if (input.startsAt !== undefined) {
+        concert.startsAt = input.startsAt;
+      }
+      if (input.categoryId !== undefined) {
+        if (input.categoryId) {
+          await this.ensureCategoryExistsOrThrow(input.categoryId, queryRunner.manager);
+        }
+        concert.categoryId = input.categoryId;
+      }
+      if (input.singerIds !== undefined) {
+        const singerIds = await this.ensureSingersExistOrThrow(input.singerIds, queryRunner.manager);
+        await this.replaceConcertSingers(queryRunner.manager, id, singerIds);
+      }
+
+      await queryRunner.manager.save(concert);
+    });
+
     return this.getConcertListItemOrThrow(id);
   }
 

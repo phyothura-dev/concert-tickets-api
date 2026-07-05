@@ -1,9 +1,10 @@
 import { OAuth2Client } from 'google-auth-library';
 import AppDataSource from '../data-source';
 import { User, type UserRole } from '../entities/User';
-import { AuthenticationError, InternalError, ValidationError } from '../lib/errors';
+import { AuthenticationError, ConflictError, InternalError, ValidationError } from '../lib/errors';
 import { signJwt } from '../lib/auth-jwt';
-import type { GoogleSignInInput } from '../validations/auth.validation';
+import { hashPassword, verifyPassword } from '../lib/password';
+import type { GoogleSignInInput, LoginInput, RegisterInput } from '../validations/auth.validation';
 
 export type AuthResult = {
   user: User;
@@ -39,7 +40,67 @@ function resolveRole(googleSub: string, currentRole?: UserRole): UserRole {
   return currentRole ?? 'USER';
 }
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 export class AuthService {
+  private toAuthResult(user: User): AuthResult {
+    return {
+      user,
+      authToken: signJwt(user.id, user.email, user.role),
+    };
+  }
+
+  private ensureActiveUser(user: User): void {
+    if (user.status === 'DISABLED') {
+      throw new AuthenticationError('Account is disabled', null, 'ACCOUNT_DISABLED');
+    }
+  }
+
+  async register(input: RegisterInput): Promise<AuthResult> {
+    const repo = AppDataSource.getRepository(User);
+    const email = normalizeEmail(input.email);
+    const existing = await repo.findOne({ where: { email } });
+    if (existing) {
+      throw new ConflictError('EMAIL_ALREADY_EXISTS', 'An account with this email already exists');
+    }
+
+    const now = new Date();
+    const user = repo.create({
+      googleSub: null,
+      email,
+      passwordHash: await hashPassword(input.password),
+      role: 'USER',
+      status: 'ACTIVE',
+      name: input.name?.trim() ?? null,
+      pictureUrl: null,
+      emailVerified: false,
+      lastLoginAt: now,
+    });
+
+    const savedUser = await repo.save(user);
+    return this.toAuthResult(savedUser);
+  }
+
+  async login(input: LoginInput): Promise<AuthResult> {
+    const repo = AppDataSource.getRepository(User);
+    const user = await repo
+      .createQueryBuilder('user')
+      .addSelect('user.passwordHash')
+      .where('user.email = :email', { email: normalizeEmail(input.email) })
+      .getOne();
+
+    if (!user || !(await verifyPassword(input.password, user.passwordHash))) {
+      throw new AuthenticationError('Invalid email or password', null, 'INVALID_CREDENTIALS');
+    }
+
+    this.ensureActiveUser(user);
+    user.lastLoginAt = new Date();
+    const savedUser = await repo.save(user);
+    return this.toAuthResult(savedUser);
+  }
+
   async signInWithGoogle(input: GoogleSignInInput): Promise<AuthResult> {
     const clientId = getGoogleClientId();
     const ticket = await googleClient.verifyIdToken({
@@ -62,20 +123,38 @@ export class AuthService {
 
     const repo = AppDataSource.getRepository(User);
     const now = new Date();
+    const email = normalizeEmail(payload.email);
     let user = await repo.findOne({ where: { googleSub: payload.sub } });
 
     if (!user) {
-      user = repo.create({
-        googleSub: payload.sub,
-        email: payload.email,
-        role: resolveRole(payload.sub),
-        name: payload.name ?? null,
-        pictureUrl: payload.picture ?? null,
-        emailVerified: payload.email_verified === true,
-        lastLoginAt: now,
-      });
+      user = await repo.findOne({ where: { email } });
+      if (!user) {
+        user = repo.create({
+          googleSub: payload.sub,
+          email,
+          role: resolveRole(payload.sub),
+          status: 'ACTIVE',
+          name: payload.name ?? null,
+          pictureUrl: payload.picture ?? null,
+          emailVerified: payload.email_verified === true,
+          lastLoginAt: now,
+        });
+      } else {
+        this.ensureActiveUser(user);
+        user.googleSub = payload.sub;
+        user.role = resolveRole(payload.sub, user.role);
+        user.name = payload.name ?? user.name;
+        user.pictureUrl = payload.picture ?? user.pictureUrl;
+        user.emailVerified = payload.email_verified === true || user.emailVerified;
+        user.lastLoginAt = now;
+      }
     } else {
-      user.email = payload.email;
+      this.ensureActiveUser(user);
+      const emailOwner = await repo.findOne({ where: { email } });
+      if (emailOwner && emailOwner.id !== user.id) {
+        throw new ConflictError('EMAIL_ALREADY_EXISTS', 'An account with this email already exists');
+      }
+      user.email = email;
       user.role = resolveRole(payload.sub, user.role);
       user.name = payload.name ?? null;
       user.pictureUrl = payload.picture ?? null;
@@ -84,10 +163,7 @@ export class AuthService {
     }
 
     const savedUser = await repo.save(user);
-    return {
-      user: savedUser,
-      authToken: signJwt(savedUser.id, savedUser.email, savedUser.role),
-    };
+    return this.toAuthResult(savedUser);
   }
 
   async getUserById(userId: string): Promise<User> {
@@ -95,6 +171,7 @@ export class AuthService {
     if (!user) {
       throw new AuthenticationError('Invalid JWT', null, 'INVALID_JWT');
     }
+    this.ensureActiveUser(user);
     return user;
   }
 }

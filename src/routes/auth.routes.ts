@@ -6,11 +6,40 @@ import { validateBody } from '../middleware/validate.middleware';
 import { toUserDto } from '../dtos/user.dto';
 import { getAuthTokenCookieName, getAuthTokenCookieOptions, getClearAuthTokenCookieOptions } from '../lib/auth-jwt';
 import { AuthService } from '../services/auth.service';
-import { googleSignInSchema, type GoogleSignInInput } from '../validations/auth.validation';
+import {
+  googleSignInSchema,
+  loginSchema,
+  registerSchema,
+  type GoogleSignInInput,
+  type LoginInput,
+  type RegisterInput,
+} from '../validations/auth.validation';
 
 export const authRouter = Router();
 
 const authService = new AuthService();
+
+authRouter.post(
+  '/register',
+  authLimiter,
+  validateBody(registerSchema),
+  asyncHandler(async (req: Request<unknown, unknown, RegisterInput>, res: Response) => {
+    const result = await authService.register(req.body);
+    res.cookie(getAuthTokenCookieName(), result.authToken, getAuthTokenCookieOptions());
+    res.status(201).json({ message: 'Registered successfully', data: { user: toUserDto(result.user) } });
+  }),
+);
+
+authRouter.post(
+  '/login',
+  authLimiter,
+  validateBody(loginSchema),
+  asyncHandler(async (req: Request<unknown, unknown, LoginInput>, res: Response) => {
+    const result = await authService.login(req.body);
+    res.cookie(getAuthTokenCookieName(), result.authToken, getAuthTokenCookieOptions());
+    res.status(200).json({ message: 'Signed in successfully', data: { user: toUserDto(result.user) } });
+  }),
+);
 
 authRouter.post(
   '/google',

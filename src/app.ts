@@ -6,7 +6,9 @@ import { categoryRouter } from './routes/category.routes';
 import { concertRouter } from './routes/concert.routes';
 import { notificationRouter } from './routes/notification.routes';
 import { reservationRouter } from './routes/reservation.routes';
+import { singerRouter } from './routes/singer.routes';
 import { ticketRouter } from './routes/ticket.routes';
+import { userRouter } from './routes/user.routes';
 import { correlationIdMiddleware } from './middleware/correlation-id.middleware';
 import { corsMiddleware } from './middleware/cors.middleware';
 import { requestLoggerMiddleware } from './middleware/request-logger.middleware';
@@ -39,7 +41,9 @@ export function createApp(): Application {
   v1Router.use('/categories', categoryRouter);
   v1Router.use('/concerts', concertRouter);
   v1Router.use('/notifications', notificationRouter);
+  v1Router.use('/singers', singerRouter);
   v1Router.use('/tickets', ticketRouter);
+  v1Router.use('/users', userRouter);
   v1Router.use('/', reservationRouter);
 
   app.use('/api/v1', v1Router);

@@ -11,6 +11,14 @@ export type ConcertDto = {
     name: string;
     slug: string;
   } | null;
+  singerIds: string[];
+  singers: {
+    id: string;
+    name: string;
+    title: string;
+    createdAt: string;
+    updatedAt: string;
+  }[];
   availableStock: number;
   totalStock: number;
 };
@@ -23,6 +31,8 @@ export function toConcertDto(item: ConcertListItem): ConcertDto {
     startsAt: item.startsAt,
     categoryId: item.categoryId ?? null,
     category: item.category ?? null,
+    singerIds: item.singerIds ?? [],
+    singers: item.singers ?? [],
     availableStock: item.availableStock ?? 0,
     totalStock: item.totalStock ?? 0,
   };

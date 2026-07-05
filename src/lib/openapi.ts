@@ -1,11 +1,13 @@
 import { OpenAPIRegistry, OpenApiGeneratorV31, extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 import { reserveSchema, purchaseSchema, directPurchaseSchema } from '../validations/reservation.validation';
-import { googleSignInSchema } from '../validations/auth.validation';
+import { googleSignInSchema, loginSchema, registerSchema } from '../validations/auth.validation';
 import { categoryParamsSchema, createCategorySchema, updateCategorySchema } from '../validations/category.validation';
 import { concertParamsSchema, createConcertSchema, updateConcertSchema } from '../validations/concert.validation';
 import { registerNotificationTokenSchema, removeNotificationTokenSchema } from '../validations/notification.validation';
+import { createSingerSchema, singerParamsSchema, updateSingerSchema } from '../validations/singer.validation';
 import { createTicketSchema, ticketParamsSchema, updateTicketSchema } from '../validations/ticket.validation';
+import { updateUserSchema, userParamsSchema } from '../validations/user.validation';
 
 extendZodWithOpenApi(z);
 
@@ -45,6 +47,16 @@ const CategoryDtoSchema = z
   })
   .openapi('CategoryDto');
 
+const SingerDtoSchema = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string(),
+    title: z.string(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .openapi('SingerDto');
+
 const ConcertDtoSchema = z
   .object({
     id: z.string().uuid(),
@@ -53,6 +65,8 @@ const ConcertDtoSchema = z
     startsAt: z.string().datetime(),
     categoryId: z.string().uuid().nullable(),
     category: CategoryDtoSchema.nullable(),
+    singerIds: z.array(z.string().uuid()),
+    singers: z.array(SingerDtoSchema),
     availableStock: z.number().int().nonnegative(),
     totalStock: z.number().int().nonnegative(),
   })
@@ -63,10 +77,13 @@ const UserDtoSchema = z
     id: z.string().uuid(),
     email: z.string().email(),
     role: z.enum(['USER', 'ADMIN']),
+    status: z.enum(['ACTIVE', 'DISABLED']),
     name: z.string().nullable(),
     pictureUrl: z.string().url().nullable(),
     emailVerified: z.boolean(),
     lastLoginAt: z.string().datetime(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
   })
   .openapi('UserDto');
 
@@ -164,6 +181,46 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
 
   registry.register('SuccessEnvelope', SuccessEnvelopeSchema);
   registry.register('ErrorEnvelope', ErrorEnvelopeSchema);
+
+  registry.registerPath({
+    method: 'post',
+    path: '/auth/register',
+    tags: ['Auth'],
+    summary: 'Register with email and password',
+    request: {
+      body: {
+        required: true,
+        content: { 'application/json': { schema: registerSchema } },
+      },
+    },
+    responses: {
+      201: jsonResponse('Registered', envelope(AuthUserResponseSchema)),
+      400: errorResponse('Validation error'),
+      409: errorResponse('Email already exists'),
+      429: errorResponse('Rate limit exceeded'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/auth/login',
+    tags: ['Auth'],
+    summary: 'Sign in with email and password',
+    request: {
+      body: {
+        required: true,
+        content: { 'application/json': { schema: loginSchema } },
+      },
+    },
+    responses: {
+      200: jsonResponse('Signed in', envelope(AuthUserResponseSchema)),
+      400: errorResponse('Validation error'),
+      401: errorResponse('Invalid credentials or disabled account'),
+      429: errorResponse('Rate limit exceeded'),
+      500: errorResponse('Internal error'),
+    },
+  });
 
   registry.registerPath({
     method: 'post',
@@ -342,6 +399,93 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
       200: jsonResponse('Concert', envelope(ConcertDtoSchema)),
       400: errorResponse('Validation error'),
       404: errorResponse('Concert not found'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/singers',
+    tags: ['Singers'],
+    summary: 'List singers',
+    responses: {
+      200: jsonResponse('Singer list', envelope(z.array(SingerDtoSchema))),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/singers',
+    tags: ['Singers'],
+    summary: 'Create a singer (admin)',
+    request: {
+      body: {
+        required: true,
+        content: { 'application/json': { schema: createSingerSchema } },
+      },
+    },
+    responses: {
+      201: jsonResponse('Singer created', envelope(SingerDtoSchema)),
+      400: errorResponse('Validation error'),
+      401: errorResponse('Authentication required'),
+      403: errorResponse('Admin access required'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/singers/{id}',
+    tags: ['Singers'],
+    summary: 'Get a singer by id',
+    request: {
+      params: singerParamsSchema,
+    },
+    responses: {
+      200: jsonResponse('Singer', envelope(SingerDtoSchema)),
+      400: errorResponse('Validation error'),
+      404: errorResponse('Singer not found'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'patch',
+    path: '/singers/{id}',
+    tags: ['Singers'],
+    summary: 'Update a singer (admin)',
+    request: {
+      params: singerParamsSchema,
+      body: {
+        required: true,
+        content: { 'application/json': { schema: updateSingerSchema } },
+      },
+    },
+    responses: {
+      200: jsonResponse('Singer updated', envelope(SingerDtoSchema)),
+      400: errorResponse('Validation error'),
+      401: errorResponse('Authentication required'),
+      403: errorResponse('Admin access required'),
+      404: errorResponse('Singer not found'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'delete',
+    path: '/singers/{id}',
+    tags: ['Singers'],
+    summary: 'Delete a singer and remove concert assignments (admin)',
+    request: {
+      params: singerParamsSchema,
+    },
+    responses: {
+      200: jsonResponse('Singer deleted', envelope(DeleteResultSchema)),
+      400: errorResponse('Validation error'),
+      401: errorResponse('Authentication required'),
+      403: errorResponse('Admin access required'),
+      404: errorResponse('Singer not found'),
       500: errorResponse('Internal error'),
     },
   });
@@ -607,6 +751,42 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
     },
   });
 
+  registry.registerPath({
+    method: 'get',
+    path: '/users',
+    tags: ['Users'],
+    summary: 'List users (admin)',
+    responses: {
+      200: jsonResponse('User list', envelope(z.array(UserDtoSchema))),
+      401: errorResponse('Authentication required'),
+      403: errorResponse('Admin access required'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'patch',
+    path: '/users/{id}',
+    tags: ['Users'],
+    summary: 'Update a user (admin)',
+    request: {
+      params: userParamsSchema,
+      body: {
+        required: true,
+        content: { 'application/json': { schema: updateUserSchema } },
+      },
+    },
+    responses: {
+      200: jsonResponse('User updated', envelope(UserDtoSchema)),
+      400: errorResponse('Validation error'),
+      401: errorResponse('Authentication required'),
+      403: errorResponse('Admin access required'),
+      404: errorResponse('User not found'),
+      409: errorResponse('Email already exists'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
   const generator = new OpenApiGeneratorV31(registry.definitions);
   return generator.generateDocument({
     openapi: '3.1.0',
@@ -616,6 +796,6 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
       description: 'Day 3 hardened ticket reservation backend. Errors return `{ error, message, ref }` envelope; every response carries `X-Correlation-ID`.',
     },
     servers: [{ url: '/api/v1' }],
-    tags: [{ name: 'Auth' }, { name: 'Categories' }, { name: 'Concerts' }, { name: 'Tickets' }, { name: 'Reservations' }, { name: 'Purchase' }, { name: 'Notifications' }, { name: 'Operations' }],
+    tags: [{ name: 'Auth' }, { name: 'Categories' }, { name: 'Concerts' }, { name: 'Singers' }, { name: 'Tickets' }, { name: 'Reservations' }, { name: 'Purchase' }, { name: 'Notifications' }, { name: 'Users' }, { name: 'Operations' }],
   });
 }

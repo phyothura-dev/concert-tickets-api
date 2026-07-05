@@ -16,10 +16,10 @@ const DEFAULT_AUTH_JWT_EXPIRES_IN_SECONDS = 7 * 24 * 60 * 60;
 
 function getAuthJwtSecret(): string {
   const secret = process.env['AUTH_JWT_SECRET'];
-  if (!secret || secret.length < 32) {
+  if (!secret || secret.trim().length < 32) {
     throw new InternalError('Authentication is not configured', null, 'AUTH_MISCONFIGURED');
   }
-  return secret;
+  return secret.trim();
 }
 
 function getAuthJwtExpiresInSeconds(): number {
@@ -36,7 +36,8 @@ function getAuthJwtExpiresInSeconds(): number {
 }
 
 export function getAuthTokenCookieName(): string {
-  return process.env['AUTH_TOKEN_NAME'] ?? 'auth_token';
+  const name = process.env['AUTH_TOKEN_NAME'] ?? 'auth_token';
+  return name.trim();
 }
 
 export function getAuthTokenCookieOptions(): CookieOptions {

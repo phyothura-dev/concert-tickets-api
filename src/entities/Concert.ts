@@ -1,5 +1,6 @@
-import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, Index, JoinColumn, JoinTable, ManyToMany, ManyToOne, OneToMany, PrimaryGeneratedColumn } from "typeorm";
 import { Category } from "./Category";
+import { Singer } from "./Singer";
 import { Ticket } from "./Ticket";
 
 @Entity({ name: "concerts" })
@@ -30,5 +31,13 @@ export class Concert {
 
   @OneToMany(() => Ticket, (t) => t.concert)
   tickets!: Ticket[];
+
+  @ManyToMany(() => Singer, (singer) => singer.concerts)
+  @JoinTable({
+    name: 'concert_singers',
+    joinColumn: { name: 'concertId', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'singerId', referencedColumnName: 'id' },
+  })
+  singers!: Singer[];
 }
 
