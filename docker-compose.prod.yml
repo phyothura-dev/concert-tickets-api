@@ -1,6 +1,6 @@
 services:
   app:
-    image: ghcr.io/phyothura-dev/ticket-reservation-api-:production
+    image: ghcr.io/phyothura-dev/concert-tickets-api:production
     restart: unless-stopped
     env_file:
       - .env.production
