@@ -1,9 +1,6 @@
 services:
   app:
-    build:
-      context: .
-      target: prod
-    image: ${APP_IMAGE:-ticket-reservation-api}:${APP_IMAGE_TAG:-latest}
+    image: ghcr.io/phyothura-dev/ticket-reservation-api-:production
     restart: unless-stopped
     env_file:
       - .env.production
