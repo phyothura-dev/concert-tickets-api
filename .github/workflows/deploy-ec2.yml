@@ -58,6 +58,9 @@ jobs:
 
             cd ~/concert-tickets-api
 
+            # Sync latest docker-compose.prod.yml from repository
+            git pull origin main
+
             # Login to GHCR on EC2 server to pull private image
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
