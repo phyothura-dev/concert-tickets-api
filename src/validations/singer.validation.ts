@@ -10,6 +10,7 @@ export const createSingerSchema = z
   .object({
     name: z.string().trim().min(1, 'name is required').max(160, 'name is too long'),
     title: z.string().trim().min(1, 'title is required').max(160, 'title is too long'),
+    categoryId: z.string().uuid('categoryId must be a valid UUID'),
   })
   .strict();
 

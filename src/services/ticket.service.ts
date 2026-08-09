@@ -1,11 +1,45 @@
 import AppDataSource from '../data-source';
+import { QueryFailedError } from 'typeorm';
 import { Concert } from '../entities/Concert';
 import { Reservation } from '../entities/Reservation';
-import { Ticket } from '../entities/Ticket';
+import { Ticket, type TicketType } from '../entities/Ticket';
 import { ConflictError, NotFoundError } from '../lib/errors';
 import { CreateTicketInput, UpdateTicketInput } from '../validations/ticket.validation';
 
 export class TicketService {
+  private async saveTicket(ticket: Ticket): Promise<Ticket> {
+    try {
+      return await AppDataSource.getRepository(Ticket).save(ticket);
+    } catch (error) {
+      if (
+        error instanceof QueryFailedError
+        && /UNIQUE constraint failed: tickets\.concertId, tickets\.type/i.test(error.message)
+      ) {
+        throw new ConflictError(
+          'TICKET_TYPE_ALREADY_EXISTS',
+          'Ticket inventory already exists for this concert and ticket type',
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async ensureCombinationAvailable(
+    concertId: string,
+    type: TicketType,
+    currentId?: string,
+  ): Promise<void> {
+    const existing = await AppDataSource.getRepository(Ticket).findOne({
+      where: { concertId, type },
+    });
+    if (existing && existing.id !== currentId) {
+      throw new ConflictError(
+        'TICKET_TYPE_ALREADY_EXISTS',
+        'Ticket inventory already exists for this concert and ticket type',
+      );
+    }
+  }
+
   async listTickets(): Promise<Ticket[]> {
     const repo = AppDataSource.getRepository(Ticket);
     return repo.find({ order: { concertId: 'ASC' } });
@@ -28,10 +62,7 @@ export class TicketService {
       throw new NotFoundError('Concert not found', null, 'CONCERT_NOT_FOUND');
     }
 
-    const existing = await ticketRepo.findOne({ where: { concertId: input.concertId } });
-    if (existing) {
-      throw new ConflictError('TICKET_ALREADY_EXISTS', 'Ticket inventory already exists for concert');
-    }
+    await this.ensureCombinationAvailable(input.concertId, input.type);
 
     const entity = ticketRepo.create({
       concertId: input.concertId,
@@ -40,7 +71,7 @@ export class TicketService {
       price: input.price,
       type: input.type,
     });
-    return ticketRepo.save(entity);
+    return this.saveTicket(entity);
   }
 
   async updateTicket(id: string, input: UpdateTicketInput): Promise<Ticket> {
@@ -50,6 +81,18 @@ export class TicketService {
     if (!ticket) {
       throw new NotFoundError('Ticket not found', null, 'TICKET_NOT_FOUND');
     }
+
+    const nextConcertId = input.concertId ?? ticket.concertId;
+    const nextType = input.type ?? ticket.type;
+    if (input.concertId !== undefined && input.concertId !== ticket.concertId) {
+      const concertExists = await AppDataSource.getRepository(Concert).exists({
+        where: { id: input.concertId },
+      });
+      if (!concertExists) {
+        throw new NotFoundError('Concert not found', null, 'CONCERT_NOT_FOUND');
+      }
+    }
+    await this.ensureCombinationAvailable(nextConcertId, nextType, ticket.id);
 
     if (input.totalStock !== undefined) {
       const allocatedStock = ticket.totalStock - ticket.remainingStock;
@@ -69,11 +112,14 @@ export class TicketService {
     if (input.price !== undefined) {
       ticket.price = input.price;
     }
+    if (input.concertId !== undefined) {
+      ticket.concertId = input.concertId;
+    }
     if (input.type !== undefined) {
       ticket.type = input.type;
     }
 
-    return ticketRepo.save(ticket);
+    return this.saveTicket(ticket);
   }
 
   async deleteTicket(id: string): Promise<{ deleted: true }> {

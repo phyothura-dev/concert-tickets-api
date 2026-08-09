@@ -7,6 +7,7 @@ Concert ticket reservation bootcamp backend assignment built with Node.js + Type
 - List concerts and stock: `GET /concerts`
 - Ticket inventory management: `GET /tickets`, `POST /tickets`
 - Reserve tickets (temporary hold): `POST /reserve` (rate-limited)
+- View the authenticated user's reservation history: `GET /reservations/me`
 - Purchase
   - reservation purchase: `POST /purchase`
   - direct purchase (optimistic): `POST /purchase/optimistic`
@@ -68,10 +69,11 @@ src/
 | Method | Path | Description |
 | --- | --- | --- |
 | GET | `/` | Health check |
-| GET | `/concerts` | List concerts |
+| GET | `/concerts` | List concerts; supports `search`, `venue`, and `categoryId` filters |
 | GET | `/tickets` | List ticket inventory |
 | POST | `/tickets` | Create ticket inventory |
 | POST | `/reserve` | Reserve tickets (hold stock) |
+| GET | `/reservations/me` | List the authenticated user's ticket history |
 | POST | `/purchase` | Purchase a reservation by `reservationId` |
 | POST | `/purchase/optimistic` | Direct purchase (optimistic) |
 | POST | `/purchase/pessimistic` | Direct purchase (pessimistic) |
@@ -81,7 +83,13 @@ src/
 | POST | `/auth/logout` | Clear JWT auth cookie |
 | POST | `/notifications/register-token` | Register/refresh current user's FCM token |
 | DELETE | `/notifications/register-token` | Disable current user's FCM token |
+| GET | `/users` | List users (admin) |
+| POST | `/users` | Create a user with the configured default password (admin) |
+| PATCH | `/users/:id` | Update a user (admin) |
 | GET | `/api-docs` | Swagger UI |
+
+Admin-created users receive a hashed default password. Override the local
+`ChangeMe123!` default with `ADMIN_CREATED_USER_DEFAULT_PASSWORD` in production.
 
 ## Setup (Local)
 

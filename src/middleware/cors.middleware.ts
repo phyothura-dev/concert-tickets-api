@@ -1,6 +1,6 @@
 import { type NextFunction, type Request, type Response } from 'express';
 
-const ALLOWED_METHODS = 'GET,POST,DELETE,OPTIONS';
+const ALLOWED_METHODS = 'GET,POST,PATCH,DELETE,OPTIONS';
 const ALLOWED_HEADERS = 'Content-Type,X-Correlation-ID';
 
 export function corsMiddleware(req: Request, res: Response, next: NextFunction): void {

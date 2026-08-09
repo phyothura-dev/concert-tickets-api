@@ -1,6 +1,7 @@
 import AppDataSource from '../data-source';
 import { Category } from '../entities/Category';
 import { Concert } from '../entities/Concert';
+import { Singer } from '../entities/Singer';
 import { ConflictError, NotFoundError } from '../lib/errors';
 import { withTransaction } from '../lib/transaction';
 import type { CreateCategoryInput, UpdateCategoryInput } from '../validations/category.validation';
@@ -80,6 +81,7 @@ export class CategoryService {
       }
 
       await queryRunner.manager.update(Concert, { categoryId: id }, { categoryId: null });
+      await queryRunner.manager.update(Singer, { categoryId: id }, { categoryId: null });
       await queryRunner.manager.delete(Category, { id });
 
       return { deleted: true };

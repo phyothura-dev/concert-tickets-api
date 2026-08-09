@@ -21,8 +21,8 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
-      - data:/app/data
-
+      - ./data:/app/data
+      
   redis:
     image: redis:7-alpine
     restart: unless-stopped

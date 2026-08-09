@@ -6,7 +6,7 @@ import { Singer } from '../entities/Singer';
 import { Ticket } from '../entities/Ticket';
 import { NotFoundError } from '../lib/errors';
 import { withTransaction } from '../lib/transaction';
-import type { CreateConcertInput, UpdateConcertInput } from '../validations/concert.validation';
+import type { CreateConcertInput, ListConcertsQuery, UpdateConcertInput } from '../validations/concert.validation';
 import { In, type EntityManager } from 'typeorm';
 
 export type ConcertListItem = {
@@ -25,6 +25,12 @@ export type ConcertListItem = {
     id: string;
     name: string;
     title: string;
+    categoryId: string | null;
+    category: {
+      id: string;
+      name: string;
+      slug: string;
+    } | null;
     createdAt: string;
     updatedAt: string;
   }[];
@@ -41,8 +47,8 @@ export class ConcertService {
     return item;
   }
 
-  async listConcerts(): Promise<ConcertListItem[]> {
-    const rows = await AppDataSource.getRepository(Concert)
+  async listConcerts(filters: ListConcertsQuery = {}): Promise<ConcertListItem[]> {
+    const query = AppDataSource.getRepository(Concert)
       .createQueryBuilder('c')
       .leftJoin(Category, 'cat', 'cat.id = c.categoryId')
       .leftJoin(Ticket, 't', 't.concertId = c.id')
@@ -62,8 +68,36 @@ export class ConcertService {
       .addGroupBy('c.categoryId')
       .addGroupBy('cat.name')
       .addGroupBy('cat.slug')
-      .orderBy('c.startsAt', 'ASC')
-      .getRawMany<{
+      .orderBy('c.startsAt', 'ASC');
+
+    if (filters.search) {
+      query.andWhere(
+        `(
+          LOWER(c.title) LIKE :search
+          OR LOWER(c.venue) LIKE :search
+          OR EXISTS (
+            SELECT 1
+            FROM concert_singers cs_filter
+            INNER JOIN singers s_filter ON s_filter.id = cs_filter.singerId
+            WHERE cs_filter.concertId = c.id
+              AND LOWER(s_filter.name) LIKE :search
+          )
+        )`,
+        { search: `%${filters.search.toLowerCase()}%` },
+      );
+    }
+    if (filters.venue) {
+      query.andWhere('LOWER(c.venue) = :venue', {
+        venue: filters.venue.toLowerCase(),
+      });
+    }
+    if (filters.categoryId) {
+      query.andWhere('c.categoryId = :categoryId', {
+        categoryId: filters.categoryId,
+      });
+    }
+
+    const rows = await query.getRawMany<{
         id: string;
         title: string;
         venue: string;
@@ -105,10 +139,14 @@ export class ConcertService {
     const rows = await AppDataSource.getRepository(Singer)
       .createQueryBuilder('s')
       .innerJoin('concert_singers', 'cs', 'cs.singerId = s.id')
+      .leftJoin(Category, 'cat', 'cat.id = s.categoryId')
       .select('cs.concertId', 'concertId')
       .addSelect('s.id', 'id')
       .addSelect('s.name', 'name')
       .addSelect('s.title', 'title')
+      .addSelect('s.categoryId', 'categoryId')
+      .addSelect('cat.name', 'categoryName')
+      .addSelect('cat.slug', 'categorySlug')
       .addSelect('s.createdAt', 'createdAt')
       .addSelect('s.updatedAt', 'updatedAt')
       .where('cs.concertId IN (:...concertIds)', { concertIds })
@@ -118,6 +156,9 @@ export class ConcertService {
         id: string;
         name: string;
         title: string;
+        categoryId: string | null;
+        categoryName: string | null;
+        categorySlug: string | null;
         createdAt: string;
         updatedAt: string;
       }>();
@@ -129,6 +170,15 @@ export class ConcertService {
         id: row.id,
         name: row.name,
         title: row.title,
+        categoryId: row.categoryId,
+        category:
+          row.categoryId && row.categoryName && row.categorySlug
+            ? {
+                id: row.categoryId,
+                name: row.categoryName,
+                slug: row.categorySlug,
+              }
+            : null,
         createdAt: new Date(row.createdAt).toISOString(),
         updatedAt: new Date(row.updatedAt).toISOString(),
       });

@@ -4,6 +4,7 @@ import { Concert } from './Concert';
 export type TicketType = 'VIP' | 'NORMAL';
 
 @Entity({ name: 'tickets' })
+@Index(['concertId', 'type'], { unique: true })
 export class Ticket {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

@@ -7,12 +7,25 @@ import { asyncHandler } from '../middleware/async-handler';
 import { requireAuthMiddleware } from '../middleware/auth.middleware';
 import { validateBody } from '../middleware/validate.middleware';
 import { reserveLimiter } from '../middleware/rate-limit.middleware';
+import { toReservationHistoryDtoList } from '../dtos/reservation.dto';
 
 export const reservationRouter = Router();
 
 const reservationService = new ReservationService();
 const cleanupService = new CleanupService();
 const purchaseService = new PurchaseService();
+
+reservationRouter.get(
+  '/reservations/me',
+  requireAuthMiddleware,
+  asyncHandler(async (req: Request, res: Response) => {
+    const reservations = await reservationService.listUserReservations(req.user!.userId);
+    res.status(200).json({
+      message: 'Fetched ticket history successfully',
+      data: toReservationHistoryDtoList(reservations),
+    });
+  }),
+);
 
 reservationRouter.post(
   '/reserve',
@@ -51,7 +64,7 @@ reservationRouter.post(
   requireAuthMiddleware,
   validateBody(purchaseSchema),
   asyncHandler(async (req: Request<unknown, unknown, PurchaseInput>, res: Response) => {
-    const result = await reservationService.purchase(req.body);
+    const result = await reservationService.purchase(req.body, req.user!.userId);
     res.status(200).json({message: 'Reservation purchased successfully',data: result});
   }),
 );

@@ -1,3 +1,4 @@
+import AppDataSource from '../data-source';
 import { Reservation } from '../entities/Reservation';
 import { Ticket } from '../entities/Ticket';
 import { ConflictError, NotFoundError } from '../lib/errors';
@@ -15,6 +16,14 @@ export type PurchaseResult = {
 };
 
 export class ReservationService {
+  async listUserReservations(userId: string): Promise<Reservation[]> {
+    return AppDataSource.getRepository(Reservation).find({
+      where: { userId },
+      relations: { concert: true },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   async reserve(input: ReserveInput, userId: string): Promise<ReserveResult> {
     const holdSeconds = input.holdSeconds ?? 120;
     return withTransaction(async (queryRunner) => {
@@ -56,10 +65,10 @@ export class ReservationService {
     });
   }
 
-  async purchase(input: PurchaseInput): Promise<PurchaseResult> {
+  async purchase(input: PurchaseInput, userId: string): Promise<PurchaseResult> {
     return withTransaction(async (queryRunner) => {
       const reservation = await queryRunner.manager.findOne(Reservation, {
-        where: { id: input.reservationId },
+        where: { id: input.reservationId, userId },
       });
       if (!reservation) {
         throw new NotFoundError('Reservation not found', null, 'RESERVATION_NOT_FOUND');

@@ -1,5 +1,6 @@
 import { Column, Entity, Index, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { Concert } from './Concert';
+import { Singer } from './Singer';
 
 @Entity({ name: 'categories' })
 export class Category {
@@ -16,4 +17,7 @@ export class Category {
 
   @OneToMany(() => Concert, (concert) => concert.category)
   concerts!: Concert[];
+
+  @OneToMany(() => Singer, (singer) => singer.category)
+  singers!: Singer[];
 }

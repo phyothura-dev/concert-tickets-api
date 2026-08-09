@@ -6,6 +6,15 @@ export const userParamsSchema = z
   })
   .strict();
 
+export const createUserSchema = z
+  .object({
+    email: z.string().trim().email('email must be valid').max(320, 'email is too long'),
+    name: z.string().trim().min(1, 'name is required').max(160, 'name is too long'),
+    role: z.enum(['USER', 'ADMIN']).default('USER'),
+    status: z.enum(['ACTIVE', 'DISABLED']).default('ACTIVE'),
+  })
+  .strict();
+
 export const updateUserSchema = z
   .object({
     email: z.string().trim().email('email must be valid').max(320, 'email is too long').optional(),
@@ -19,4 +28,5 @@ export const updateUserSchema = z
   .refine((value) => Object.keys(value).length > 0, 'At least one field is required');
 
 export type UserParams = z.infer<typeof userParamsSchema>;
+export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;

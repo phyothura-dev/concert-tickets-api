@@ -3,11 +3,11 @@ import { z } from 'zod';
 import { reserveSchema, purchaseSchema, directPurchaseSchema } from '../validations/reservation.validation';
 import { googleSignInSchema, loginSchema, registerSchema } from '../validations/auth.validation';
 import { categoryParamsSchema, createCategorySchema, updateCategorySchema } from '../validations/category.validation';
-import { concertParamsSchema, createConcertSchema, updateConcertSchema } from '../validations/concert.validation';
+import { concertParamsSchema, createConcertSchema, listConcertsQuerySchema, updateConcertSchema } from '../validations/concert.validation';
 import { registerNotificationTokenSchema, removeNotificationTokenSchema } from '../validations/notification.validation';
 import { createSingerSchema, singerParamsSchema, updateSingerSchema } from '../validations/singer.validation';
 import { createTicketSchema, ticketParamsSchema, updateTicketSchema } from '../validations/ticket.validation';
-import { updateUserSchema, userParamsSchema } from '../validations/user.validation';
+import { createUserSchema, updateUserSchema, userParamsSchema } from '../validations/user.validation';
 
 extendZodWithOpenApi(z);
 
@@ -52,6 +52,8 @@ const SingerDtoSchema = z
     id: z.string().uuid(),
     name: z.string(),
     title: z.string(),
+    categoryId: z.string().uuid().nullable(),
+    category: CategoryDtoSchema.nullable(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -120,6 +122,22 @@ const ReservationCreatedSchema = z
     expiresAt: z.string().datetime(),
   })
   .openapi('ReservationCreated');
+
+const ReservationHistoryDtoSchema = z
+  .object({
+    id: z.string().uuid(),
+    quantity: z.number().int().positive(),
+    status: z.enum(['PENDING', 'PURCHASED', 'EXPIRED']),
+    expiresAt: z.string().datetime(),
+    createdAt: z.string().datetime(),
+    concert: z.object({
+      id: z.string().uuid(),
+      title: z.string(),
+      venue: z.string(),
+      startsAt: z.string().datetime(),
+    }),
+  })
+  .openapi('ReservationHistoryDto');
 
 const PurchaseResultSchema = z
   .object({
@@ -272,8 +290,12 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
     path: '/concerts',
     tags: ['Concerts'],
     summary: 'List concerts with stock totals',
+    request: {
+      query: listConcertsQuerySchema,
+    },
     responses: {
       200: jsonResponse('Concert list', envelope(z.array(ConcertDtoSchema))),
+      400: errorResponse('Validation error'),
       500: errorResponse('Internal error'),
     },
   });
@@ -305,6 +327,27 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
     summary: 'List concert categories',
     responses: {
       200: jsonResponse('Category list', envelope(z.array(CategoryDtoSchema))),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/users',
+    tags: ['Users'],
+    summary: 'Pre-provision a Google-linked user (admin)',
+    request: {
+      body: {
+        required: true,
+        content: { 'application/json': { schema: createUserSchema } },
+      },
+    },
+    responses: {
+      201: jsonResponse('User created', envelope(UserDtoSchema)),
+      400: errorResponse('Validation error'),
+      401: errorResponse('Authentication required'),
+      403: errorResponse('Admin access required'),
+      409: errorResponse('Email already exists'),
       500: errorResponse('Internal error'),
     },
   });
@@ -430,6 +473,7 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
       400: errorResponse('Validation error'),
       401: errorResponse('Authentication required'),
       403: errorResponse('Admin access required'),
+      404: errorResponse('Category not found'),
       500: errorResponse('Internal error'),
     },
   });
@@ -556,7 +600,7 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
       201: jsonResponse('Ticket inventory created', envelope(TicketDtoSchema)),
       400: errorResponse('Validation error'),
       404: errorResponse('Concert not found'),
-      409: errorResponse('Ticket inventory already exists for concert'),
+      409: errorResponse('Ticket type already exists for concert'),
       401: errorResponse('Authentication required'),
       403: errorResponse('Admin access required'),
     },
@@ -596,7 +640,7 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
       401: errorResponse('Authentication required'),
       403: errorResponse('Admin access required'),
       404: errorResponse('Ticket not found'),
-      409: errorResponse('Stock conflict'),
+      409: errorResponse('Stock or duplicate ticket-type conflict'),
       500: errorResponse('Internal error'),
     },
   });
@@ -616,6 +660,21 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
       403: errorResponse('Admin access required'),
       404: errorResponse('Ticket not found'),
       409: errorResponse('Pending reservations exist'),
+      500: errorResponse('Internal error'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/reservations/me',
+    tags: ['Reservations'],
+    summary: 'List the authenticated user ticket history',
+    responses: {
+      200: jsonResponse(
+        'Ticket history fetched',
+        envelope(z.array(ReservationHistoryDtoSchema)),
+      ),
+      401: errorResponse('Authentication required'),
       500: errorResponse('Internal error'),
     },
   });

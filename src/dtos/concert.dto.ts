@@ -16,6 +16,12 @@ export type ConcertDto = {
     id: string;
     name: string;
     title: string;
+    categoryId: string | null;
+    category: {
+      id: string;
+      name: string;
+      slug: string;
+    } | null;
     createdAt: string;
     updatedAt: string;
   }[];
