@@ -103,12 +103,14 @@ export class AuthService {
 
   async signInWithGoogle(input: GoogleSignInInput): Promise<AuthResult> {
     const clientId = getGoogleClientId();
-    const ticket = await googleClient.verifyIdToken({
-      idToken: input.idToken,
-      audience: clientId,
-    }).catch(() => {
-      throw new AuthenticationError('Invalid Google identity token', null, 'INVALID_GOOGLE_TOKEN');
-    });
+    const ticket = await googleClient
+      .verifyIdToken({
+        idToken: input.idToken,
+        audience: clientId,
+      })
+      .catch(() => {
+        throw new AuthenticationError('Invalid Google identity token', null, 'INVALID_GOOGLE_TOKEN');
+      });
 
     const payload = ticket.getPayload();
     if (!payload?.sub) {

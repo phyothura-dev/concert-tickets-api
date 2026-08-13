@@ -1,6 +1,7 @@
 import { Column, CreateDateColumn, Entity, Index, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { NotificationDevice } from './NotificationDevice';
 import { Reservation } from './Reservation';
+import { PaymentSubmission } from './PaymentSubmission';
 
 @Entity({ name: 'users' })
 @Index(['googleSub'], { unique: true })
@@ -47,6 +48,9 @@ export class User {
 
   @OneToMany(() => Reservation, (reservation) => reservation.user)
   reservations!: Reservation[];
+
+  @OneToMany(() => PaymentSubmission, (payment) => payment.reviewer)
+  reviewedPayments!: PaymentSubmission[];
 }
 
 export type UserRole = 'USER' | 'ADMIN';

@@ -1,78 +1,60 @@
 import { Router, type Request, type Response } from 'express';
-import { ReservationService } from '../services/reservation.service';
-import { CleanupService } from '../services/cleanup.service';
-import { PurchaseService } from '../services/purchase.service';
-import { directPurchaseSchema, purchaseSchema, reserveSchema, type DirectPurchaseInput, type PurchaseInput, type ReserveInput } from '../validations/reservation.validation';
+import { toPaymentDto } from '../dtos/payment.dto';
+import { toReservationDto, toReservationDtoList } from '../dtos/reservation.dto';
 import { asyncHandler } from '../middleware/async-handler';
 import { requireAuthMiddleware } from '../middleware/auth.middleware';
-import { validateBody } from '../middleware/validate.middleware';
+import { requireAdminMiddleware } from '../middleware/authorization.middleware';
+import { getPaymentMethod, getPaymentScreenshot, paymentUploadMiddleware } from '../middleware/payment-upload.middleware';
 import { reserveLimiter } from '../middleware/rate-limit.middleware';
-import { toReservationHistoryDtoList } from '../dtos/reservation.dto';
+import { validateBody, validateParams } from '../middleware/validate.middleware';
+import { CleanupService } from '../services/cleanup.service';
+import { PaymentService } from '../services/payment.service';
+import { ReservationService } from '../services/reservation.service';
+import {
+  reservationParamsSchema, reserveSchema, type ReservationParams, type ReserveInput,
+} from '../validations/reservation.validation';
 
 export const reservationRouter = Router();
-
 const reservationService = new ReservationService();
 const cleanupService = new CleanupService();
-const purchaseService = new PurchaseService();
+const paymentService = new PaymentService();
 
-reservationRouter.get(
-  '/reservations/me',
-  requireAuthMiddleware,
-  asyncHandler(async (req: Request, res: Response) => {
-    const reservations = await reservationService.listUserReservations(req.user!.userId);
-    res.status(200).json({
-      message: 'Fetched ticket history successfully',
-      data: toReservationHistoryDtoList(reservations),
-    });
-  }),
-);
+reservationRouter.get('/reservations/me', requireAuthMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const reservations = await reservationService.listUserReservations(req.user!.userId);
+  res.status(200).json({ message: 'Fetched ticket history successfully', data: toReservationDtoList(reservations) });
+}));
 
-reservationRouter.post(
-  '/reserve',
-  reserveLimiter,
-  requireAuthMiddleware,
-  validateBody(reserveSchema),
-  asyncHandler(async (req: Request<unknown, unknown, ReserveInput>, res: Response) => {
-    const result = await reservationService.reserve(req.body, req.user!.userId);
-    res.status(201).json({message: 'Reservation created successfully',data: result});
-  }),
-);
+reservationRouter.get('/reservations/:id', requireAuthMiddleware, validateParams(reservationParamsSchema), asyncHandler(async (req: Request<ReservationParams>, res: Response) => {
+  const reservation = await reservationService.getReservation(req.params.id, req.user!.userId, req.user!.role);
+  res.status(200).json({ message: 'Fetched reservation successfully', data: toReservationDto(reservation) });
+}));
 
-reservationRouter.post(
-  '/purchase/optimistic',
-  requireAuthMiddleware,
-  validateBody(directPurchaseSchema),
-  asyncHandler(async (req: Request<unknown, unknown, DirectPurchaseInput>, res: Response) => {
-    const result = await purchaseService.purchaseOptimistic(req.body, req.user!.userId);
-    res.status(200).json({message: 'Ticket purchased (optimistic)',data: result});
-  }),
-);
+reservationRouter.post('/reserve', reserveLimiter, requireAuthMiddleware, validateBody(reserveSchema), asyncHandler(async (req: Request<unknown, unknown, ReserveInput>, res: Response) => {
+  const reservation = await reservationService.reserve(req.body, req.user!.userId);
+  res.status(201).json({ message: 'Reservation created successfully', data: toReservationDto(reservation) });
+}));
 
-reservationRouter.post(
-  '/purchase/pessimistic',
-  requireAuthMiddleware,
-  validateBody(directPurchaseSchema),
-  asyncHandler(async (req: Request<unknown, unknown, DirectPurchaseInput>, res: Response) => {
-    const result = await purchaseService.purchasePessimistic(req.body, req.user!.userId);
-    res.status(200).json({message: 'Ticket purchased (pessimistic)',data: result});
-  }),
-);
+reservationRouter.post('/reservations/:id/payment', requireAuthMiddleware, validateParams(reservationParamsSchema), paymentUploadMiddleware, asyncHandler(async (req: Request<ReservationParams>, res: Response) => {
+  const payment = await paymentService.submit(
+    req.params.id,
+    req.user!.userId,
+    getPaymentMethod(res),
+    getPaymentScreenshot(res),
+  );
+  res.status(201).json({ message: 'Payment submitted for review', data: toPaymentDto(payment) });
+}));
 
-// Purchase a reservation
-reservationRouter.post(
-  '/purchase',
-  requireAuthMiddleware,
-  validateBody(purchaseSchema),
-  asyncHandler(async (req: Request<unknown, unknown, PurchaseInput>, res: Response) => {
-    const result = await reservationService.purchase(req.body, req.user!.userId);
-    res.status(200).json({message: 'Reservation purchased successfully',data: result});
-  }),
-);
+reservationRouter.get('/reservations/:id/payment-screenshot', requireAuthMiddleware, validateParams(reservationParamsSchema), asyncHandler(async (req: Request<ReservationParams>, res: Response) => {
+  const reservation = await reservationService.getReservation(req.params.id, req.user!.userId, req.user!.role);
+  if (!reservation.payment) {
+    res.status(404).json({ message: 'Payment submission not found', code: 'PAYMENT_NOT_FOUND' });
+    return;
+  }
+  const proof = await paymentService.readProof(reservation.payment.id, req.user!.userId, req.user!.role);
+  res.type(proof.mimeType).set('Cache-Control', 'private, no-store').send(proof.bytes);
+}));
 
-reservationRouter.post(
-  '/cleanup',
-  asyncHandler(async (_req: Request, res: Response) => {
-    const result = await cleanupService.cleanupExpiredReservations();
-    res.status(200).json({message: 'Expired reservations cleaned up successfully',data: result});
-  }),
-);
+reservationRouter.post('/cleanup', requireAuthMiddleware, requireAdminMiddleware, asyncHandler(async (_req: Request, res: Response) => {
+  const result = await cleanupService.cleanupExpiredReservations();
+  res.status(200).json({ message: 'Expired reservations cleaned up successfully', data: result });
+}));

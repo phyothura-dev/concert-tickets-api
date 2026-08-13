@@ -1,42 +1,28 @@
+import { In, LessThanOrEqual } from 'typeorm';
+import { PaymentSubmission } from '../entities/PaymentSubmission';
 import { Reservation } from '../entities/Reservation';
-import { Ticket } from '../entities/Ticket';
-import { LessThanOrEqual } from 'typeorm';
-import { withTransaction } from '../lib/transaction';
+import { withImmediateTransaction } from '../lib/transaction';
+import { ReservationService } from './reservation.service';
 
 export class CleanupService {
   async cleanupExpiredReservations(now: Date = new Date()): Promise<{ expired: number }> {
-    return withTransaction(async (queryRunner) => {
+    return withImmediateTransaction(async (queryRunner) => {
       const expired = await queryRunner.manager.find(Reservation, {
         where: {
-          status: 'PENDING' as const,
+          status: In(['PENDING', 'UNDER_REVIEW']),
           expiresAt: LessThanOrEqual(now),
         },
       });
-
-      if (expired.length === 0) {
-        return { expired: 0 };
+      for (const reservation of expired) {
+        await ReservationService.releaseSeats(queryRunner.manager, reservation, 'EXPIRED');
       }
-
-      for (const r of expired) {
-        await queryRunner.manager
-          .createQueryBuilder()
-          .update(Ticket)
-          .set({
-            remainingStock: () => 'remainingStock + :qty',
-            version: () => 'version + 1',
-          })
-          .where('concertId = :cid', { cid: r.concertId })
-          .setParameter('qty', r.quantity)
-          .execute();
+      if (expired.length > 0) {
+        await queryRunner.manager.createQueryBuilder().update(PaymentSubmission)
+          .set({ status: 'EXPIRED' })
+          .where('reservationId IN (:...ids) AND status = :status', {
+            ids: expired.map((item) => item.id), status: 'PENDING_REVIEW',
+          }).execute();
       }
-
-      await queryRunner.manager
-        .createQueryBuilder()
-        .update(Reservation)
-        .set({ status: 'EXPIRED' })
-        .whereInIds(expired.map((r) => r.id))
-        .execute();
-
       return { expired: expired.length };
     });
   }

@@ -1,6 +1,7 @@
 import { OpenAPIRegistry, OpenApiGeneratorV31, extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
-import { reserveSchema, purchaseSchema, directPurchaseSchema } from '../validations/reservation.validation';
+import { reservationParamsSchema, reserveSchema } from '../validations/reservation.validation';
+import { paymentListQuerySchema, paymentMethodSchema, paymentParamsSchema, reviewPaymentSchema } from '../validations/payment.validation';
 import { googleSignInSchema, loginSchema, registerSchema } from '../validations/auth.validation';
 import { categoryParamsSchema, createCategorySchema, updateCategorySchema } from '../validations/category.validation';
 import { concertParamsSchema, createConcertSchema, listConcertsQuerySchema, updateConcertSchema } from '../validations/concert.validation';
@@ -116,18 +117,13 @@ const NotificationTokenDisabledSchema = z
   })
   .openapi('NotificationTokenDisabled');
 
-const ReservationCreatedSchema = z
-  .object({
-    reservationId: z.string().uuid(),
-    expiresAt: z.string().datetime(),
-  })
-  .openapi('ReservationCreated');
-
 const ReservationHistoryDtoSchema = z
   .object({
     id: z.string().uuid(),
     quantity: z.number().int().positive(),
-    status: z.enum(['PENDING', 'PURCHASED', 'EXPIRED']),
+    status: z.enum(['PENDING', 'UNDER_REVIEW', 'PURCHASED', 'REJECTED', 'EXPIRED']),
+    unitPrice: z.number().int().nullable(),
+    totalAmount: z.number().int().nullable(),
     expiresAt: z.string().datetime(),
     createdAt: z.string().datetime(),
     concert: z.object({
@@ -136,25 +132,23 @@ const ReservationHistoryDtoSchema = z
       venue: z.string(),
       startsAt: z.string().datetime(),
     }),
+    ticket: z.object({ id: z.string().uuid(), type: z.enum(['VIP', 'NORMAL']), price: z.number().int() }).nullable(),
+    seats: z.array(z.object({ id: z.string().uuid(), label: z.string() })),
+    payment: z.object({
+      id: z.string().uuid(),
+      status: z.enum(['PENDING_REVIEW', 'APPROVED', 'REJECTED', 'EXPIRED']),
+      paymentMethod: paymentMethodSchema,
+      rejectionReason: z.string().nullable(),
+      submittedAt: z.string().datetime(),
+      reviewedAt: z.string().datetime().nullable(),
+    }).nullable(),
   })
   .openapi('ReservationHistoryDto');
 
-const PurchaseResultSchema = z
-  .object({
-    reservationId: z.string().uuid(),
-    concertId: z.string().uuid(),
-    quantity: z.number().int().positive(),
-    remainingStock: z.number().int().nonnegative(),
-    method: z.enum(['OPTIMISTIC', 'PESSIMISTIC']),
-  })
-  .openapi('PurchaseResult');
-
-const LegacyPurchaseResultSchema = z
-  .object({
-    reservationId: z.string().uuid(),
-    status: z.literal('PURCHASED'),
-  })
-  .openapi('LegacyPurchaseResult');
+const SeatDtoSchema = z.object({
+  id: z.string().uuid(), ticketId: z.string().uuid(), label: z.string(), sequence: z.number().int(),
+  status: z.enum(['AVAILABLE', 'HELD', 'SOLD']),
+}).openapi('SeatDto');
 
 const CleanupResultSchema = z
   .object({
@@ -666,6 +660,18 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
 
   registry.registerPath({
     method: 'get',
+    path: '/tickets/{id}/seats',
+    tags: ['Tickets'],
+    summary: 'List selectable seats for a ticket type',
+    request: { params: ticketParamsSchema },
+    responses: {
+      200: jsonResponse('Seat list', envelope(z.array(SeatDtoSchema))),
+      404: errorResponse('Ticket not found'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
     path: '/reservations/me',
     tags: ['Reservations'],
     summary: 'List the authenticated user ticket history',
@@ -691,7 +697,7 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
       },
     },
     responses: {
-      201: jsonResponse('Reservation created', envelope(ReservationCreatedSchema)),
+      201: jsonResponse('Reservation created', envelope(ReservationHistoryDtoSchema)),
       400: errorResponse('Validation error'),
       404: errorResponse('Concert/ticket not found'),
       409: errorResponse('Conflict (e.g. NOT_ENOUGH_STOCK)'),
@@ -701,70 +707,33 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
   });
 
   registry.registerPath({
-    method: 'post',
-    path: '/purchase',
-    tags: ['Reservations'],
-    summary: 'Legacy reservation-based purchase (PENDING -> PURCHASED)',
-    request: {
-      body: {
-        required: true,
-        content: { 'application/json': { schema: purchaseSchema } },
-      },
-    },
-    responses: {
-      200: jsonResponse('Reservation purchased', envelope(LegacyPurchaseResultSchema)),
-      400: errorResponse('Validation error'),
-      404: errorResponse('Reservation not found'),
-      409: errorResponse('Reservation not pending or expired'),
-      401: errorResponse('Authentication required'),
-    },
+    method: 'get', path: '/reservations/{id}', tags: ['Reservations'], summary: 'Get an owned reservation',
+    request: { params: reservationParamsSchema },
+    responses: { 200: jsonResponse('Reservation', envelope(ReservationHistoryDtoSchema)), 401: errorResponse('Authentication required'), 404: errorResponse('Reservation not found') },
   });
 
   registry.registerPath({
-    method: 'post',
-    path: '/purchase/optimistic',
-    tags: ['Purchase'],
-    summary: 'Direct purchase using optimistic locking (@VersionColumn on Ticket)',
-    request: {
-      body: {
-        required: true,
-        content: { 'application/json': { schema: directPurchaseSchema } },
-      },
-    },
-    responses: {
-      200: jsonResponse('Ticket purchased', envelope(PurchaseResultSchema)),
-      400: errorResponse('Validation error'),
-      404: errorResponse('Ticket not found'),
-      409: errorResponse('VERSION_CONFLICT or NOT_ENOUGH_STOCK'),
-      401: errorResponse('Authentication required'),
-    },
+    method: 'post', path: '/reservations/{id}/payment', tags: ['Payments'], summary: 'Upload one manual payment screenshot (JPEG, PNG, or WebP; max 1 MB)',
+    request: { params: reservationParamsSchema, body: { required: true, content: { 'multipart/form-data': { schema: z.object({ paymentMethod: paymentMethodSchema, screenshot: z.string() }) } } } },
+    responses: { 201: jsonResponse('Submitted for review', envelope(z.unknown())), 400: errorResponse('Invalid screenshot'), 409: errorResponse('Reservation expired or already submitted') },
   });
 
   registry.registerPath({
-    method: 'post',
-    path: '/purchase/pessimistic',
-    tags: ['Purchase'],
-    summary: 'Direct purchase using pessimistic locking (SQLite BEGIN IMMEDIATE)',
-    request: {
-      body: {
-        required: true,
-        content: { 'application/json': { schema: directPurchaseSchema } },
-      },
-    },
-    responses: {
-      200: jsonResponse('Ticket purchased', envelope(PurchaseResultSchema)),
-      400: errorResponse('Validation error'),
-      404: errorResponse('Ticket not found'),
-      409: errorResponse('LOCK_CONFLICT or NOT_ENOUGH_STOCK'),
-      401: errorResponse('Authentication required'),
-    },
+    method: 'get', path: '/payments', tags: ['Payments'], summary: 'List manual payments (admin)',
+    request: { query: paymentListQuerySchema }, responses: { 200: jsonResponse('Payment list', envelope(z.unknown())), 403: errorResponse('Admin access required') },
+  });
+
+  registry.registerPath({
+    method: 'patch', path: '/payments/{id}/review', tags: ['Payments'], summary: 'Approve or reject a manual payment (admin)',
+    request: { params: paymentParamsSchema, body: { required: true, content: { 'application/json': { schema: reviewPaymentSchema } } } },
+    responses: { 200: jsonResponse('Payment reviewed', envelope(z.unknown())), 409: errorResponse('Payment already reviewed or expired') },
   });
 
   registry.registerPath({
     method: 'post',
     path: '/cleanup',
     tags: ['Operations'],
-    summary: 'Sweep expired pending reservations and restore stock',
+    summary: 'Sweep expired seat holds and restore stock (admin)',
     responses: {
       200: jsonResponse('Cleanup completed', envelope(CleanupResultSchema)),
     },
@@ -855,6 +824,6 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
       description: 'Day 3 hardened ticket reservation backend. Errors return `{ error, message, ref }` envelope; every response carries `X-Correlation-ID`.',
     },
     servers: [{ url: '/api/v1' }],
-    tags: [{ name: 'Auth' }, { name: 'Categories' }, { name: 'Concerts' }, { name: 'Singers' }, { name: 'Tickets' }, { name: 'Reservations' }, { name: 'Purchase' }, { name: 'Notifications' }, { name: 'Users' }, { name: 'Operations' }],
+    tags: [{ name: 'Auth' }, { name: 'Categories' }, { name: 'Concerts' }, { name: 'Singers' }, { name: 'Tickets' }, { name: 'Reservations' }, { name: 'Payments' }, { name: 'Notifications' }, { name: 'Users' }, { name: 'Operations' }],
   });
 }

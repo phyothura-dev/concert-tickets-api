@@ -1,15 +1,20 @@
 import AppDataSource from '../data-source';
-import { QueryFailedError } from 'typeorm';
+import { type EntityManager, QueryFailedError } from 'typeorm';
 import { Concert } from '../entities/Concert';
 import { Reservation } from '../entities/Reservation';
+import { Seat } from '../entities/Seat';
 import { Ticket, type TicketType } from '../entities/Ticket';
 import { ConflictError, NotFoundError } from '../lib/errors';
+import { withTransaction } from '../lib/transaction';
 import { CreateTicketInput, UpdateTicketInput } from '../validations/ticket.validation';
 
 export class TicketService {
-  private async saveTicket(ticket: Ticket): Promise<Ticket> {
+  private async saveTicket(
+    ticket: Ticket,
+    manager: EntityManager = AppDataSource.manager,
+  ): Promise<Ticket> {
     try {
-      return await AppDataSource.getRepository(Ticket).save(ticket);
+      return await manager.save(Ticket, ticket);
     } catch (error) {
       if (
         error instanceof QueryFailedError
@@ -24,25 +29,33 @@ export class TicketService {
     }
   }
 
-  private async ensureCombinationAvailable(
-    concertId: string,
-    type: TicketType,
-    currentId?: string,
+  private seatLabel(type: TicketType, sequence: number): string {
+    return type + '-' + sequence.toString().padStart(3, '0');
+  }
+
+  private async createSeats(
+    ticket: Ticket,
+    from: number,
+    to: number,
+    manager: EntityManager,
   ): Promise<void> {
-    const existing = await AppDataSource.getRepository(Ticket).findOne({
-      where: { concertId, type },
+    if (from > to) return;
+    const seats = Array.from({ length: to - from + 1 }, (_, index) => {
+      const sequence = from + index;
+      return manager.create(Seat, {
+        ticketId: ticket.id,
+        label: this.seatLabel(ticket.type, sequence),
+        sequence,
+        status: 'AVAILABLE' as const,
+        currentReservationId: null,
+        holdExpiresAt: null,
+      });
     });
-    if (existing && existing.id !== currentId) {
-      throw new ConflictError(
-        'TICKET_TYPE_ALREADY_EXISTS',
-        'Ticket inventory already exists for this concert and ticket type',
-      );
-    }
+    await manager.save(Seat, seats);
   }
 
   async listTickets(): Promise<Ticket[]> {
-    const repo = AppDataSource.getRepository(Ticket);
-    return repo.find({ order: { concertId: 'ASC' } });
+    return AppDataSource.getRepository(Ticket).find({ order: { concertId: 'ASC', type: 'ASC' } });
   }
 
   async getTicket(id: string): Promise<Ticket> {
@@ -53,95 +66,136 @@ export class TicketService {
     return ticket;
   }
 
-  async createTicket(input: CreateTicketInput): Promise<Ticket> {
-    const ticketRepo = AppDataSource.getRepository(Ticket);
-    const concertRepo = AppDataSource.getRepository(Concert);
-
-    const concertExists = await concertRepo.exists({ where: { id: input.concertId } });
-    if (!concertExists) {
-      throw new NotFoundError('Concert not found', null, 'CONCERT_NOT_FOUND');
-    }
-
-    await this.ensureCombinationAvailable(input.concertId, input.type);
-
-    const entity = ticketRepo.create({
-      concertId: input.concertId,
-      totalStock: input.totalStock,
-      remainingStock: input.totalStock,
-      price: input.price,
-      type: input.type,
+  async listSeats(ticketId: string): Promise<Seat[]> {
+    await this.getTicket(ticketId);
+    return AppDataSource.getRepository(Seat).find({
+      where: { ticketId },
+      order: { sequence: 'ASC' },
     });
-    return this.saveTicket(entity);
   }
 
-  async updateTicket(id: string, input: UpdateTicketInput): Promise<Ticket> {
-    const ticketRepo = AppDataSource.getRepository(Ticket);
-    const ticket = await ticketRepo.findOne({ where: { id } });
-
-    if (!ticket) {
-      throw new NotFoundError('Ticket not found', null, 'TICKET_NOT_FOUND');
-    }
-
-    const nextConcertId = input.concertId ?? ticket.concertId;
-    const nextType = input.type ?? ticket.type;
-    if (input.concertId !== undefined && input.concertId !== ticket.concertId) {
-      const concertExists = await AppDataSource.getRepository(Concert).exists({
-        where: { id: input.concertId },
-      });
+  async createTicket(input: CreateTicketInput): Promise<Ticket> {
+    return withTransaction(async (queryRunner) => {
+      const manager = queryRunner.manager;
+      const concertExists = await manager.exists(Concert, { where: { id: input.concertId } });
       if (!concertExists) {
         throw new NotFoundError('Concert not found', null, 'CONCERT_NOT_FOUND');
       }
-    }
-    await this.ensureCombinationAvailable(nextConcertId, nextType, ticket.id);
 
-    if (input.totalStock !== undefined) {
-      const allocatedStock = ticket.totalStock - ticket.remainingStock;
-      if (input.totalStock < allocatedStock) {
+      const existing = await manager.findOne(Ticket, {
+        where: { concertId: input.concertId, type: input.type },
+      });
+      if (existing) {
         throw new ConflictError(
-          'TOTAL_STOCK_BELOW_ALLOCATED',
-          'totalStock cannot be lower than already reserved or purchased stock',
-          { allocatedStock },
+          'TICKET_TYPE_ALREADY_EXISTS',
+          'Ticket inventory already exists for this concert and ticket type',
         );
       }
 
-      const delta = input.totalStock - ticket.totalStock;
-      ticket.totalStock = input.totalStock;
-      ticket.remainingStock += delta;
-    }
+      const ticket = manager.create(Ticket, {
+        concertId: input.concertId,
+        totalStock: input.totalStock,
+        remainingStock: input.totalStock,
+        price: input.price,
+        type: input.type,
+      });
+      const saved = await this.saveTicket(ticket, manager);
+      await this.createSeats(saved, 1, saved.totalStock, manager);
+      return saved;
+    });
+  }
 
-    if (input.price !== undefined) {
-      ticket.price = input.price;
-    }
-    if (input.concertId !== undefined) {
-      ticket.concertId = input.concertId;
-    }
-    if (input.type !== undefined) {
-      ticket.type = input.type;
-    }
+  async updateTicket(id: string, input: UpdateTicketInput): Promise<Ticket> {
+    return withTransaction(async (queryRunner) => {
+      const manager = queryRunner.manager;
+      const ticket = await manager.findOne(Ticket, { where: { id } });
+      if (!ticket) {
+        throw new NotFoundError('Ticket not found', null, 'TICKET_NOT_FOUND');
+      }
 
-    return this.saveTicket(ticket);
+      const nextConcertId = input.concertId ?? ticket.concertId;
+      const nextType = input.type ?? ticket.type;
+      if (nextConcertId !== ticket.concertId) {
+        const concertExists = await manager.exists(Concert, { where: { id: nextConcertId } });
+        if (!concertExists) {
+          throw new NotFoundError('Concert not found', null, 'CONCERT_NOT_FOUND');
+        }
+      }
+
+      const duplicate = await manager.findOne(Ticket, {
+        where: { concertId: nextConcertId, type: nextType },
+      });
+      if (duplicate && duplicate.id !== ticket.id) {
+        throw new ConflictError(
+          'TICKET_TYPE_ALREADY_EXISTS',
+          'Ticket inventory already exists for this concert and ticket type',
+        );
+      }
+
+      const identityChanges = nextConcertId !== ticket.concertId || nextType !== ticket.type;
+      if (identityChanges) {
+        const hasReservations = await manager.exists(Reservation, { where: { ticketId: ticket.id } });
+        const totalSeats = await manager.count(Seat, { where: { ticketId: ticket.id } });
+        const availableSeats = await manager.count(Seat, {
+          where: { ticketId: ticket.id, status: 'AVAILABLE' },
+        });
+        if (hasReservations || totalSeats !== availableSeats) {
+          throw new ConflictError(
+            'TICKET_HAS_ALLOCATIONS',
+            'Cannot change concert or type after seats have been allocated',
+          );
+        }
+      }
+
+      if (input.totalStock !== undefined && input.totalStock !== ticket.totalStock) {
+        const delta = input.totalStock - ticket.totalStock;
+        if (delta > 0) {
+          await this.createSeats(ticket, ticket.totalStock + 1, input.totalStock, manager);
+        } else {
+          const removable = await manager.find(Seat, {
+            where: { ticketId: ticket.id, status: 'AVAILABLE' },
+            order: { sequence: 'DESC' },
+            take: Math.abs(delta),
+          });
+          if (removable.length !== Math.abs(delta)) {
+            throw new ConflictError(
+              'TOTAL_STOCK_BELOW_ALLOCATED',
+              'Not enough available seats can be removed',
+            );
+          }
+          await manager.remove(Seat, removable);
+        }
+        ticket.totalStock = input.totalStock;
+        ticket.remainingStock += delta;
+      }
+
+      if (input.price !== undefined) ticket.price = input.price;
+      if (input.concertId !== undefined) ticket.concertId = input.concertId;
+      if (input.type !== undefined && input.type !== ticket.type) {
+        ticket.type = input.type;
+        const seats = await manager.find(Seat, { where: { ticketId: ticket.id } });
+        for (const seat of seats) {
+          seat.label = this.seatLabel(input.type, seat.sequence);
+        }
+        await manager.save(Seat, seats);
+      }
+
+      return this.saveTicket(ticket, manager);
+    });
   }
 
   async deleteTicket(id: string): Promise<{ deleted: true }> {
-    const ticketRepo = AppDataSource.getRepository(Ticket);
-    const ticket = await ticketRepo.findOne({ where: { id } });
-
-    if (!ticket) {
-      throw new NotFoundError('Ticket not found', null, 'TICKET_NOT_FOUND');
-    }
-
-    const hasPendingReservations = await AppDataSource.getRepository(Reservation).exists({
-      where: { concertId: ticket.concertId, status: 'PENDING' },
+    const ticket = await this.getTicket(id);
+    const hasReservations = await AppDataSource.getRepository(Reservation).exists({
+      where: { ticketId: ticket.id },
     });
-
-    if (hasPendingReservations) {
+    if (hasReservations) {
       throw new ConflictError(
-        'TICKET_HAS_PENDING_RESERVATIONS',
-        'Cannot delete ticket inventory while pending reservations exist',
+        'TICKET_HAS_RESERVATIONS',
+        'Cannot delete ticket inventory after reservations exist',
       );
     }
-
-    await ticketRepo.delete({ id });
+    await AppDataSource.getRepository(Ticket).delete({ id });
     return { deleted: true };
   }
 }

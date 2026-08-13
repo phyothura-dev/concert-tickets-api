@@ -5,6 +5,7 @@ import { authRouter } from './routes/auth.routes';
 import { categoryRouter } from './routes/category.routes';
 import { concertRouter } from './routes/concert.routes';
 import { notificationRouter } from './routes/notification.routes';
+import { paymentRouter } from './routes/payment.routes';
 import { reservationRouter } from './routes/reservation.routes';
 import { singerRouter } from './routes/singer.routes';
 import { ticketRouter } from './routes/ticket.routes';
@@ -41,6 +42,7 @@ export function createApp(): Application {
   v1Router.use('/categories', categoryRouter);
   v1Router.use('/concerts', concertRouter);
   v1Router.use('/notifications', notificationRouter);
+  v1Router.use('/payments', paymentRouter);
   v1Router.use('/singers', singerRouter);
   v1Router.use('/tickets', ticketRouter);
   v1Router.use('/users', userRouter);

@@ -1,5 +1,7 @@
-import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, VersionColumn } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, VersionColumn } from 'typeorm';
 import { Concert } from './Concert';
+import { Reservation } from './Reservation';
+import { Seat } from './Seat';
 
 export type TicketType = 'VIP' | 'NORMAL';
 
@@ -31,4 +33,10 @@ export class Ticket {
 
   @VersionColumn({ type: 'integer', default: 1 })
   version!: number;
+
+  @OneToMany(() => Seat, (seat) => seat.ticket)
+  seats!: Seat[];
+
+  @OneToMany(() => Reservation, (reservation) => reservation.ticket)
+  reservations!: Reservation[];
 }
