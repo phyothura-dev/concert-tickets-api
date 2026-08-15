@@ -5,6 +5,7 @@ export type ConcertDto = {
   title: string;
   venue: string;
   startsAt: string;
+  imageUrl: string | null;
   categoryId: string | null;
   category: {
     id: string;
@@ -35,6 +36,7 @@ export function toConcertDto(item: ConcertListItem): ConcertDto {
     title: item.title,
     venue: item.venue,
     startsAt: item.startsAt,
+    imageUrl: item.imageUrl ?? null,
     categoryId: item.categoryId ?? null,
     category: item.category ?? null,
     singerIds: item.singerIds ?? [],

@@ -66,6 +66,7 @@ const ConcertDtoSchema = z
     title: z.string(),
     venue: z.string(),
     startsAt: z.string().datetime(),
+    imageUrl: z.string().url().nullable(),
     categoryId: z.string().uuid().nullable(),
     category: CategoryDtoSchema.nullable(),
     singerIds: z.array(z.string().uuid()),
@@ -161,6 +162,11 @@ const DeleteResultSchema = z
     deleted: z.literal(true),
   })
   .openapi('DeleteResult');
+
+const ConcertMultipartSchema = z.object({
+  data: z.string().openapi({ description: 'JSON encoded concert input' }),
+  image: z.string().optional().openapi({ description: 'JPEG, PNG, or WebP image; max 1 MB' }),
+});
 
 function envelope<T extends z.ZodTypeAny>(dataSchema: T) {
   return z.object({
@@ -302,7 +308,10 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
     request: {
       body: {
         required: true,
-        content: { 'application/json': { schema: createConcertSchema } },
+        content: {
+          'application/json': { schema: createConcertSchema },
+          'multipart/form-data': { schema: ConcertMultipartSchema },
+        },
       },
     },
     responses: {
@@ -537,7 +546,10 @@ export function buildOpenApiDocument(): ReturnType<OpenApiGeneratorV31['generate
       params: concertParamsSchema,
       body: {
         required: true,
-        content: { 'application/json': { schema: updateConcertSchema } },
+        content: {
+          'application/json': { schema: updateConcertSchema },
+          'multipart/form-data': { schema: ConcertMultipartSchema },
+        },
       },
     },
     responses: {

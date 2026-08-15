@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { imageFileSchema } from './image.validation';
 
 export const paymentMethodSchema = z.enum(['KBZPAY', 'WAVEPAY']);
 
@@ -19,6 +20,11 @@ export const reviewPaymentSchema = z.discriminatedUnion('decision', [
     reason: z.string().trim().min(3).max(500),
   }).strict(),
 ]);
+
+export const submitPaymentSchema = z.object({
+  paymentMethod: paymentMethodSchema,
+  screenshot: imageFileSchema,
+}).strict();
 
 export type PaymentParams = z.infer<typeof paymentParamsSchema>;
 export type PaymentListQuery = z.infer<typeof paymentListQuerySchema>;

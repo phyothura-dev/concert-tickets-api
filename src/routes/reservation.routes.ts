@@ -4,12 +4,13 @@ import { toReservationDto, toReservationDtoList } from '../dtos/reservation.dto'
 import { asyncHandler } from '../middleware/async-handler';
 import { requireAuthMiddleware } from '../middleware/auth.middleware';
 import { requireAdminMiddleware } from '../middleware/authorization.middleware';
-import { getPaymentMethod, getPaymentScreenshot, paymentUploadMiddleware } from '../middleware/payment-upload.middleware';
 import { reserveLimiter } from '../middleware/rate-limit.middleware';
-import { validateBody, validateParams } from '../middleware/validate.middleware';
+import { parseSchema, validateBody, validateParams } from '../middleware/validate.middleware';
+import multer from 'multer';
 import { CleanupService } from '../services/cleanup.service';
 import { PaymentService } from '../services/payment.service';
 import { ReservationService } from '../services/reservation.service';
+import { submitPaymentSchema } from '../validations/payment.validation';
 import {
   reservationParamsSchema, reserveSchema, type ReservationParams, type ReserveInput,
 } from '../validations/reservation.validation';
@@ -18,6 +19,7 @@ export const reservationRouter = Router();
 const reservationService = new ReservationService();
 const cleanupService = new CleanupService();
 const paymentService = new PaymentService();
+const upload = multer({ storage: multer.memoryStorage() });
 
 reservationRouter.get('/reservations/me', requireAuthMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const reservations = await reservationService.listUserReservations(req.user!.userId);
@@ -34,12 +36,16 @@ reservationRouter.post('/reserve', reserveLimiter, requireAuthMiddleware, valida
   res.status(201).json({ message: 'Reservation created successfully', data: toReservationDto(reservation) });
 }));
 
-reservationRouter.post('/reservations/:id/payment', requireAuthMiddleware, validateParams(reservationParamsSchema), paymentUploadMiddleware, asyncHandler(async (req: Request<ReservationParams>, res: Response) => {
+reservationRouter.post('/reservations/:id/payment', requireAuthMiddleware, validateParams(reservationParamsSchema), upload.single('screenshot'), asyncHandler(async (req: Request<ReservationParams>, res: Response) => {
+  const input = parseSchema(submitPaymentSchema, {
+    paymentMethod: req.body.paymentMethod,
+    screenshot: req.file,
+  });
   const payment = await paymentService.submit(
     req.params.id,
     req.user!.userId,
-    getPaymentMethod(res),
-    getPaymentScreenshot(res),
+    input.paymentMethod,
+    input.screenshot,
   );
   res.status(201).json({ message: 'Payment submitted for review', data: toPaymentDto(payment) });
 }));

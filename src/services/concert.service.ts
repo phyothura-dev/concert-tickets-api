@@ -5,15 +5,19 @@ import { Reservation } from '../entities/Reservation';
 import { Singer } from '../entities/Singer';
 import { Ticket } from '../entities/Ticket';
 import { NotFoundError } from '../lib/errors';
+import { logger } from '../lib/logger';
 import { withTransaction } from '../lib/transaction';
 import type { CreateConcertInput, ListConcertsQuery, UpdateConcertInput } from '../validations/concert.validation';
+import type { UploadedImage } from '../validations/image.validation';
 import { In, type EntityManager } from 'typeorm';
+import { ImageStorageService } from './image-storage.service';
 
 export type ConcertListItem = {
   id: string;
   title: string;
   venue: string;
   startsAt: string;
+  imageUrl?: string | null;
   categoryId?: string | null;
   category?: {
     id: string;
@@ -39,6 +43,8 @@ export type ConcertListItem = {
 };
 
 export class ConcertService {
+  private readonly imageStorage = new ImageStorageService();
+
   private async getConcertListItemOrThrow(id: string): Promise<ConcertListItem> {
     const item = (await this.listConcerts()).find((concert) => concert.id === id);
     if (!item) {
@@ -56,6 +62,7 @@ export class ConcertService {
       .addSelect('c.title', 'title')
       .addSelect('c.venue', 'venue')
       .addSelect('c.startsAt', 'startsAt')
+      .addSelect('c.imageUrl', 'imageUrl')
       .addSelect('c.categoryId', 'categoryId')
       .addSelect('cat.name', 'categoryName')
       .addSelect('cat.slug', 'categorySlug')
@@ -65,6 +72,7 @@ export class ConcertService {
       .addGroupBy('c.title')
       .addGroupBy('c.venue')
       .addGroupBy('c.startsAt')
+      .addGroupBy('c.imageUrl')
       .addGroupBy('c.categoryId')
       .addGroupBy('cat.name')
       .addGroupBy('cat.slug')
@@ -98,35 +106,37 @@ export class ConcertService {
     }
 
     const rows = await query.getRawMany<{
-        id: string;
-        title: string;
-        venue: string;
-        startsAt: string;
-        categoryId: string | null;
-        categoryName: string | null;
-        categorySlug: string | null;
-        availableStock: string;
-        totalStock: string;
-      }>();
+      id: string;
+      title: string;
+      venue: string;
+      startsAt: string;
+      imageUrl: string | null;
+      categoryId: string | null;
+      categoryName: string | null;
+      categorySlug: string | null;
+      availableStock: string;
+      totalStock: string;
+    }>();
 
     const singersByConcertId = await this.getSingersByConcertId(rows.map((row) => row.id));
 
     return rows.map((r) => {
       const singers = singersByConcertId.get(r.id) ?? [];
       return {
-      id: r.id,
-      title: r.title,
-      venue: r.venue,
-      startsAt: new Date(r.startsAt).toISOString(),
-      categoryId: r.categoryId,
-      category:
-        r.categoryId && r.categoryName && r.categorySlug
-          ? { id: r.categoryId, name: r.categoryName, slug: r.categorySlug }
-          : null,
-      singerIds: singers.map((singer) => singer.id),
-      singers,
-      availableStock: Number(r.availableStock),
-      totalStock: Number(r.totalStock),
+        id: r.id,
+        title: r.title,
+        venue: r.venue,
+        startsAt: new Date(r.startsAt).toISOString(),
+        imageUrl: r.imageUrl,
+        categoryId: r.categoryId,
+        category:
+          r.categoryId && r.categoryName && r.categorySlug
+            ? { id: r.categoryId, name: r.categoryName, slug: r.categorySlug }
+            : null,
+        singerIds: singers.map((singer) => singer.id),
+        singers,
+        availableStock: Number(r.availableStock),
+        totalStock: Number(r.totalStock),
       };
     });
   }
@@ -233,24 +243,39 @@ export class ConcertService {
       .execute();
   }
 
-  async createConcert(input: CreateConcertInput): Promise<ConcertListItem> {
-    const concertId = await withTransaction(async (queryRunner) => {
-      if (input.categoryId) {
-        await this.ensureCategoryExistsOrThrow(input.categoryId, queryRunner.manager);
-      }
-      const singerIds = await this.ensureSingersExistOrThrow(input.singerIds ?? [], queryRunner.manager);
+  private async removeImageSafely(imageUrl: string): Promise<void> {
+    try {
+      await this.imageStorage.removePublic(imageUrl);
+    } catch (error) {
+      logger.warn({ err: error, imageUrl }, 'Failed to remove an unused concert image');
+    }
+  }
 
-      const entity = queryRunner.manager.create(Concert, {
-        title: input.title.trim(),
-        venue: input.venue.trim(),
-        startsAt: input.startsAt,
-        categoryId: input.categoryId ?? null,
+  async createConcert(input: CreateConcertInput, image?: UploadedImage): Promise<ConcertListItem> {
+    const uploadedImageUrl = image ? await this.imageStorage.savePublic(image, 'concert-images') : undefined;
+    let concertId: string;
+    try {
+      concertId = await withTransaction(async (queryRunner) => {
+        if (input.categoryId) {
+          await this.ensureCategoryExistsOrThrow(input.categoryId, queryRunner.manager);
+        }
+        const singerIds = await this.ensureSingersExistOrThrow(input.singerIds ?? [], queryRunner.manager);
+
+        const entity = queryRunner.manager.create(Concert, {
+          title: input.title.trim(),
+          venue: input.venue.trim(),
+          startsAt: input.startsAt,
+          categoryId: input.categoryId ?? null,
+          imageUrl: uploadedImageUrl ?? null,
+        });
+        const saved = await queryRunner.manager.save(entity);
+        await this.replaceConcertSingers(queryRunner.manager, saved.id, singerIds);
+        return saved.id;
       });
-      const saved = await queryRunner.manager.save(entity);
-      await this.replaceConcertSingers(queryRunner.manager, saved.id, singerIds);
-
-      return saved.id;
-    });
+    } catch (error) {
+      if (uploadedImageUrl) await this.removeImageSafely(uploadedImageUrl);
+      throw error;
+    }
 
     return this.getConcertListItemOrThrow(concertId);
   }
@@ -259,52 +284,72 @@ export class ConcertService {
     return this.getConcertListItemOrThrow(id);
   }
 
-  async updateConcert(id: string, input: UpdateConcertInput): Promise<ConcertListItem> {
-    await withTransaction(async (queryRunner) => {
-      const concert = await queryRunner.manager.findOne(Concert, { where: { id } });
+  async updateConcert(id: string, input: UpdateConcertInput, image?: UploadedImage): Promise<ConcertListItem> {
+    const uploadedImageUrl = image ? await this.imageStorage.savePublic(image, 'concert-images') : undefined;
+    let previousImageUrl: string | null = null;
+    try {
+      await withTransaction(async (queryRunner) => {
+        const concert = await queryRunner.manager.findOneBy(Concert, { id });
 
-      if (!concert) {
-        throw new NotFoundError('Concert not found', null, 'CONCERT_NOT_FOUND');
-      }
-
-      if (input.title !== undefined) {
-        concert.title = input.title.trim();
-      }
-      if (input.venue !== undefined) {
-        concert.venue = input.venue.trim();
-      }
-      if (input.startsAt !== undefined) {
-        concert.startsAt = input.startsAt;
-      }
-      if (input.categoryId !== undefined) {
-        if (input.categoryId) {
-          await this.ensureCategoryExistsOrThrow(input.categoryId, queryRunner.manager);
+        if (!concert) {
+          throw new NotFoundError('Concert not found', null, 'CONCERT_NOT_FOUND');
         }
-        concert.categoryId = input.categoryId;
-      }
-      if (input.singerIds !== undefined) {
-        const singerIds = await this.ensureSingersExistOrThrow(input.singerIds, queryRunner.manager);
-        await this.replaceConcertSingers(queryRunner.manager, id, singerIds);
-      }
+        previousImageUrl = concert.imageUrl;
 
-      await queryRunner.manager.save(concert);
-    });
+        if (input.title !== undefined) {
+          concert.title = input.title.trim();
+        }
+        if (input.venue !== undefined) {
+          concert.venue = input.venue.trim();
+        }
+        if (input.startsAt !== undefined) {
+          concert.startsAt = input.startsAt;
+        }
+        if (input.categoryId !== undefined) {
+          if (input.categoryId) {
+            await this.ensureCategoryExistsOrThrow(input.categoryId, queryRunner.manager);
+          }
+          concert.categoryId = input.categoryId;
+        }
+        if (input.singerIds !== undefined) {
+          const singerIds = await this.ensureSingersExistOrThrow(input.singerIds, queryRunner.manager);
+          await this.replaceConcertSingers(queryRunner.manager, id, singerIds);
+        }
+        if (uploadedImageUrl) {
+          concert.imageUrl = uploadedImageUrl;
+        }
+
+        await queryRunner.manager.save(concert);
+      });
+    } catch (error) {
+      if (uploadedImageUrl) await this.removeImageSafely(uploadedImageUrl);
+      throw error;
+    }
+
+    if (uploadedImageUrl && previousImageUrl && previousImageUrl !== uploadedImageUrl) {
+      await this.removeImageSafely(previousImageUrl);
+    }
 
     return this.getConcertListItemOrThrow(id);
   }
 
   async deleteConcert(id: string): Promise<{ deleted: true }> {
-    return withTransaction(async (queryRunner) => {
-      const exists = await queryRunner.manager.exists(Concert, { where: { id } });
-      if (!exists) {
+    let imageUrl: string | null = null;
+    const result = await withTransaction(async (queryRunner) => {
+      const concert = await queryRunner.manager.findOneBy(Concert, { id });
+      if (!concert) {
         throw new NotFoundError('Concert not found', null, 'CONCERT_NOT_FOUND');
       }
+      imageUrl = concert.imageUrl;
 
       await queryRunner.manager.delete(Reservation, { concertId: id });
       await queryRunner.manager.delete(Ticket, { concertId: id });
       await queryRunner.manager.delete(Concert, { id });
 
-      return { deleted: true };
+      return { deleted: true as const };
     });
+
+    if (imageUrl) await this.removeImageSafely(imageUrl);
+    return result;
   }
 }

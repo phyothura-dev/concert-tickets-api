@@ -18,6 +18,9 @@ export class Concert {
   @Column({ type: "datetime" })
   startsAt!: Date;
 
+  @Column({ type: 'text', nullable: true })
+  imageUrl!: string | null;
+
   @Index()
   @Column({ type: "text", nullable: true })
   categoryId!: string | null;

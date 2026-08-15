@@ -4,9 +4,9 @@ import { Reservation } from '../entities/Reservation';
 import { Seat } from '../entities/Seat';
 import { ConflictError, ForbiddenError, NotFoundError } from '../lib/errors';
 import { withImmediateTransaction } from '../lib/transaction';
-import type { PaymentScreenshot } from '../middleware/payment-upload.middleware';
+import type { UploadedImage } from '../validations/image.validation';
 import type { PaymentListQuery, ReviewPaymentInput } from '../validations/payment.validation';
-import { PaymentStorageService } from './payment-storage.service';
+import { ImageStorageService } from './image-storage.service';
 import { ReservationService } from './reservation.service';
 
 const REVIEW_HOLD_MS = 24 * 60 * 60 * 1000;
@@ -21,7 +21,7 @@ const paymentRelations = {
 } as const;
 
 export class PaymentService {
-  private readonly storage = new PaymentStorageService();
+  private readonly storage = new ImageStorageService();
 
   getConfig() {
     return {
@@ -60,9 +60,9 @@ export class PaymentService {
     reservationId: string,
     userId: string,
     paymentMethod: PaymentMethod,
-    file: PaymentScreenshot,
+    file: UploadedImage,
   ): Promise<PaymentSubmission> {
-    const stored = await this.storage.save(file);
+    const stored = await this.storage.savePrivate(file, 'payment-proofs');
     try {
       const paymentId = await withImmediateTransaction(async (queryRunner) => {
         const reservation = await queryRunner.manager.findOne(Reservation, {
@@ -97,12 +97,12 @@ export class PaymentService {
         return { expired: false, id: payment.id };
       });
       if (paymentId.expired) {
-        await this.storage.remove(stored.storageKey);
+        await this.storage.removePrivate(stored.storageKey);
         throw new ConflictError('RESERVATION_EXPIRED', 'Reservation expired');
       }
       return this.getPayment(paymentId.id);
     } catch (error) {
-      await this.storage.remove(stored.storageKey);
+      await this.storage.removePrivate(stored.storageKey);
       throw error;
     }
   }
@@ -156,6 +156,6 @@ export class PaymentService {
     if (role !== 'ADMIN' && payment.reservation.userId !== userId) {
       throw new ForbiddenError('Payment proof access denied', null, 'PAYMENT_ACCESS_DENIED');
     }
-    return { bytes: await this.storage.read(payment.storageKey), mimeType: payment.mimeType };
+    return { bytes: await this.storage.readPrivate(payment.storageKey), mimeType: payment.mimeType };
   }
 }
