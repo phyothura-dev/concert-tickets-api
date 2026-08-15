@@ -1,18 +1,9 @@
 import AppDataSource from '../data-source';
 import { Category } from '../entities/Category';
-import { Concert } from '../entities/Concert';
 import { Singer } from '../entities/Singer';
 import { ConflictError, NotFoundError } from '../lib/errors';
 import { withTransaction } from '../lib/transaction';
 import type { CreateCategoryInput, UpdateCategoryInput } from '../validations/category.validation';
-
-function slugify(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
 
 export class CategoryService {
   async listCategories(): Promise<Category[]> {
@@ -39,7 +30,7 @@ export class CategoryService {
   async createCategory(input: CreateCategoryInput): Promise<Category> {
     const repo = AppDataSource.getRepository(Category);
     const name = input.name.trim();
-    const slug = input.slug?.trim() ?? slugify(name);
+    const slug = input.slug?.trim();
 
     if (!slug) {
       throw new ConflictError('CATEGORY_SLUG_INVALID', 'Category slug could not be generated');
@@ -62,7 +53,7 @@ export class CategoryService {
     if (input.slug !== undefined) {
       category.slug = input.slug.trim();
     } else if (input.name !== undefined) {
-      category.slug = slugify(category.name);
+      category.slug = category.name.toLowerCase();
     }
 
     if (!category.slug) {
@@ -80,7 +71,6 @@ export class CategoryService {
         throw new NotFoundError('Category not found', null, 'CATEGORY_NOT_FOUND');
       }
 
-      await queryRunner.manager.update(Concert, { categoryId: id }, { categoryId: null });
       await queryRunner.manager.update(Singer, { categoryId: id }, { categoryId: null });
       await queryRunner.manager.delete(Category, { id });
 

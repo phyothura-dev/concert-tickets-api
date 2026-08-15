@@ -17,15 +17,15 @@ export type ConcertListItem = {
   title: string;
   venue: string;
   startsAt: string;
-  imageUrl?: string | null;
-  categoryId?: string | null;
-  category?: {
+  imageUrl: string | null;
+  categoryIds: string[];
+  categories: {
     id: string;
     name: string;
     slug: string;
-  } | null;
-  singerIds?: string[];
-  singers?: {
+  }[];
+  singerIds: string[];
+  singers: {
     id: string;
     name: string;
     title: string;
@@ -38,8 +38,8 @@ export type ConcertListItem = {
     createdAt: string;
     updatedAt: string;
   }[];
-  availableStock?: number;
-  totalStock?: number;
+  availableStock: number;
+  totalStock: number;
 };
 
 export class ConcertService {
@@ -56,16 +56,12 @@ export class ConcertService {
   async listConcerts(filters: ListConcertsQuery = {}): Promise<ConcertListItem[]> {
     const query = AppDataSource.getRepository(Concert)
       .createQueryBuilder('c')
-      .leftJoin(Category, 'cat', 'cat.id = c.categoryId')
       .leftJoin(Ticket, 't', 't.concertId = c.id')
       .select('c.id', 'id')
       .addSelect('c.title', 'title')
       .addSelect('c.venue', 'venue')
       .addSelect('c.startsAt', 'startsAt')
       .addSelect('c.imageUrl', 'imageUrl')
-      .addSelect('c.categoryId', 'categoryId')
-      .addSelect('cat.name', 'categoryName')
-      .addSelect('cat.slug', 'categorySlug')
       .addSelect('COALESCE(SUM(t.remainingStock), 0)', 'availableStock')
       .addSelect('COALESCE(SUM(t.totalStock), 0)', 'totalStock')
       .groupBy('c.id')
@@ -73,9 +69,6 @@ export class ConcertService {
       .addGroupBy('c.venue')
       .addGroupBy('c.startsAt')
       .addGroupBy('c.imageUrl')
-      .addGroupBy('c.categoryId')
-      .addGroupBy('cat.name')
-      .addGroupBy('cat.slug')
       .orderBy('c.startsAt', 'ASC');
 
     if (filters.search) {
@@ -100,9 +93,15 @@ export class ConcertService {
       });
     }
     if (filters.categoryId) {
-      query.andWhere('c.categoryId = :categoryId', {
-        categoryId: filters.categoryId,
-      });
+      query.andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM concert_categories cc_filter
+          WHERE cc_filter.concertId = c.id
+            AND cc_filter.categoryId = :categoryId
+        )`,
+        { categoryId: filters.categoryId },
+      );
     }
 
     const rows = await query.getRawMany<{
@@ -111,16 +110,18 @@ export class ConcertService {
       venue: string;
       startsAt: string;
       imageUrl: string | null;
-      categoryId: string | null;
-      categoryName: string | null;
-      categorySlug: string | null;
       availableStock: string;
       totalStock: string;
     }>();
 
-    const singersByConcertId = await this.getSingersByConcertId(rows.map((row) => row.id));
+    const concertIds = rows.map((row) => row.id);
+    const [categoriesByConcertId, singersByConcertId] = await Promise.all([
+      this.getCategoriesByConcertId(concertIds),
+      this.getSingersByConcertId(concertIds),
+    ]);
 
     return rows.map((r) => {
+      const categories = categoriesByConcertId.get(r.id) ?? [];
       const singers = singersByConcertId.get(r.id) ?? [];
       return {
         id: r.id,
@@ -128,17 +129,40 @@ export class ConcertService {
         venue: r.venue,
         startsAt: new Date(r.startsAt).toISOString(),
         imageUrl: r.imageUrl,
-        categoryId: r.categoryId,
-        category:
-          r.categoryId && r.categoryName && r.categorySlug
-            ? { id: r.categoryId, name: r.categoryName, slug: r.categorySlug }
-            : null,
+        categoryIds: categories.map((category) => category.id),
+        categories,
         singerIds: singers.map((singer) => singer.id),
         singers,
         availableStock: Number(r.availableStock),
         totalStock: Number(r.totalStock),
       };
     });
+  }
+
+  private async getCategoriesByConcertId(concertIds: string[]): Promise<Map<string, ConcertListItem['categories']>> {
+    if (concertIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await AppDataSource.getRepository(Category)
+      .createQueryBuilder('cat')
+      .innerJoin('concert_categories', 'cc', 'cc.categoryId = cat.id')
+      .select('cc.concertId', 'concertId')
+      .addSelect('cat.id', 'id')
+      .addSelect('cat.name', 'name')
+      .addSelect('cat.slug', 'slug')
+      .where('cc.concertId IN (:...concertIds)', { concertIds })
+      .orderBy('cat.name', 'ASC')
+      .getRawMany<{ concertId: string; id: string; name: string; slug: string }>();
+
+    const categoriesByConcertId = new Map<string, ConcertListItem['categories']>();
+    for (const row of rows) {
+      const categories = categoriesByConcertId.get(row.concertId) ?? [];
+      categories.push({ id: row.id, name: row.name, slug: row.slug });
+      categoriesByConcertId.set(row.concertId, categories);
+    }
+
+    return categoriesByConcertId;
   }
 
   private async getSingersByConcertId(concertIds: string[]): Promise<Map<string, NonNullable<ConcertListItem['singers']>>> {
@@ -198,19 +222,26 @@ export class ConcertService {
     return singersByConcertId;
   }
 
-  private async ensureCategoryExistsOrThrow(categoryId: string, manager = AppDataSource.manager): Promise<void> {
-    const exists = await manager.exists(Category, { where: { id: categoryId } });
-    if (!exists) {
-      throw new NotFoundError('Category not found', null, 'CATEGORY_NOT_FOUND');
-    }
+  private uniqueIds(ids: string[]): string[] {
+    return [...new Set(ids)];
   }
 
-  private uniqueSingerIds(singerIds: string[]): string[] {
-    return [...new Set(singerIds)];
+  private async ensureCategoriesExistOrThrow(categoryIds: string[], manager: EntityManager): Promise<string[]> {
+    const uniqueIds = this.uniqueIds(categoryIds);
+    if (uniqueIds.length === 0) {
+      return [];
+    }
+
+    const categories = await manager.findBy(Category, { id: In(uniqueIds) });
+    if (categories.length !== uniqueIds.length) {
+      throw new NotFoundError('One or more categories were not found', { categoryIds: uniqueIds }, 'CATEGORY_NOT_FOUND');
+    }
+
+    return uniqueIds;
   }
 
   private async ensureSingersExistOrThrow(singerIds: string[], manager: EntityManager): Promise<string[]> {
-    const uniqueIds = this.uniqueSingerIds(singerIds);
+    const uniqueIds = this.uniqueIds(singerIds);
     if (uniqueIds.length === 0) {
       return [];
     }
@@ -221,6 +252,24 @@ export class ConcertService {
     }
 
     return uniqueIds;
+  }
+
+  private async replaceConcertCategories(manager: EntityManager, concertId: string, categoryIds: string[]): Promise<void> {
+    await manager
+      .createQueryBuilder()
+      .delete()
+      .from('concert_categories')
+      .where('concertId = :concertId', { concertId })
+      .execute();
+
+    if (categoryIds.length > 0) {
+      await manager
+        .createQueryBuilder()
+        .insert()
+        .into('concert_categories')
+        .values(categoryIds.map((categoryId) => ({ concertId, categoryId })))
+        .execute();
+    }
   }
 
   private async replaceConcertSingers(manager: EntityManager, concertId: string, singerIds: string[]): Promise<void> {
@@ -256,19 +305,17 @@ export class ConcertService {
     let concertId: string;
     try {
       concertId = await withTransaction(async (queryRunner) => {
-        if (input.categoryId) {
-          await this.ensureCategoryExistsOrThrow(input.categoryId, queryRunner.manager);
-        }
+        const categoryIds = await this.ensureCategoriesExistOrThrow(input.categoryIds ?? [], queryRunner.manager);
         const singerIds = await this.ensureSingersExistOrThrow(input.singerIds ?? [], queryRunner.manager);
 
         const entity = queryRunner.manager.create(Concert, {
           title: input.title.trim(),
           venue: input.venue.trim(),
           startsAt: input.startsAt,
-          categoryId: input.categoryId ?? null,
           imageUrl: uploadedImageUrl ?? null,
         });
         const saved = await queryRunner.manager.save(entity);
+        await this.replaceConcertCategories(queryRunner.manager, saved.id, categoryIds);
         await this.replaceConcertSingers(queryRunner.manager, saved.id, singerIds);
         return saved.id;
       });
@@ -305,11 +352,9 @@ export class ConcertService {
         if (input.startsAt !== undefined) {
           concert.startsAt = input.startsAt;
         }
-        if (input.categoryId !== undefined) {
-          if (input.categoryId) {
-            await this.ensureCategoryExistsOrThrow(input.categoryId, queryRunner.manager);
-          }
-          concert.categoryId = input.categoryId;
+        if (input.categoryIds !== undefined) {
+          const categoryIds = await this.ensureCategoriesExistOrThrow(input.categoryIds, queryRunner.manager);
+          await this.replaceConcertCategories(queryRunner.manager, id, categoryIds);
         }
         if (input.singerIds !== undefined) {
           const singerIds = await this.ensureSingersExistOrThrow(input.singerIds, queryRunner.manager);

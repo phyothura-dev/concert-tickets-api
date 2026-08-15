@@ -1,4 +1,4 @@
-import { Column, Entity, Index, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, Index, ManyToMany, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { Concert } from './Concert';
 import { Singer } from './Singer';
 
@@ -15,7 +15,7 @@ export class Category {
   @Column({ type: 'text' })
   slug!: string;
 
-  @OneToMany(() => Concert, (concert) => concert.category)
+  @ManyToMany(() => Concert, (concert) => concert.categories)
   concerts!: Concert[];
 
   @OneToMany(() => Singer, (singer) => singer.category)

@@ -1,4 +1,4 @@
-import { Column, Entity, Index, JoinColumn, JoinTable, ManyToMany, ManyToOne, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, Index, JoinTable, ManyToMany, OneToMany, PrimaryGeneratedColumn } from "typeorm";
 import { Category } from "./Category";
 import { Singer } from "./Singer";
 import { Ticket } from "./Ticket";
@@ -21,16 +21,13 @@ export class Concert {
   @Column({ type: 'text', nullable: true })
   imageUrl!: string | null;
 
-  @Index()
-  @Column({ type: "text", nullable: true })
-  categoryId!: string | null;
-
-  @ManyToOne(() => Category, (category) => category.concerts, {
-    nullable: true,
-    onDelete: "SET NULL",
+  @ManyToMany(() => Category, (category) => category.concerts)
+  @JoinTable({
+    name: 'concert_categories',
+    joinColumn: { name: 'concertId', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'categoryId', referencedColumnName: 'id' },
   })
-  @JoinColumn({ name: "categoryId" })
-  category!: Category | null;
+  categories!: Category[];
 
   @OneToMany(() => Ticket, (t) => t.concert)
   tickets!: Ticket[];
