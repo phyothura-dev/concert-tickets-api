@@ -20,7 +20,7 @@ export class Seat {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'text' })
+  @Column({ type: 'uuid' })
   ticketId!: string;
 
   @ManyToOne(() => Ticket, (ticket) => ticket.seats, { onDelete: 'CASCADE' })
@@ -37,7 +37,7 @@ export class Seat {
   status!: SeatStatus;
 
   @Index()
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: 'uuid', nullable: true })
   currentReservationId!: string | null;
 
   @ManyToOne(() => Reservation, (reservation) => reservation.currentSeats, {
@@ -47,7 +47,7 @@ export class Seat {
   @JoinColumn({ name: 'currentReservationId' })
   currentReservation!: Reservation | null;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   holdExpiresAt!: Date | null;
 
   @OneToMany(() => ReservationSeat, (assignment) => assignment.seat)

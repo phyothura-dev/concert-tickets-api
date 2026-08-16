@@ -49,10 +49,8 @@ wait
 
 What happened / expected:
 - One request succeeded with `200 OK`.
-- The other request failed with `409 Conflict`:
-  - `LOCK_CONFLICT` if SQLite writer lock contention occurred, or
-  - `NOT_ENOUGH_STOCK` after the first commit.
+- The second request waits for the PostgreSQL row lock, then fails with
+  `NOT_ENOUGH_STOCK` after the first transaction commits.
 
 Conclusion:
 - The write lock ensures only one request can successfully decrement stock; **double-selling is prevented**.
-

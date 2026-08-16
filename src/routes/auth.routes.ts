@@ -5,7 +5,7 @@ import { authLimiter } from '../middleware/rate-limit.middleware';
 import { validateBody } from '../middleware/validate.middleware';
 import { toUserDto } from '../dtos/user.dto';
 import { getAuthTokenCookieName, getAuthTokenCookieOptions, getClearAuthTokenCookieOptions } from '../lib/auth-jwt';
-import { AuthService } from '../services/auth.service';
+import { authService } from '../services/auth.service';
 import {
   googleSignInSchema,
   loginSchema,
@@ -16,8 +16,6 @@ import {
 } from '../validations/auth.validation';
 
 export const authRouter = Router();
-
-const authService = new AuthService();
 
 authRouter.post(
   '/register',

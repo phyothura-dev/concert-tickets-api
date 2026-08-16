@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { ConcertService } from '../services/concert.service';
+import { concertService } from '../services/concert.service';
 import { asyncHandler } from '../middleware/async-handler';
 import { requireAuthMiddleware } from '../middleware/auth.middleware';
 import { requireAdminMiddleware } from '../middleware/authorization.middleware';
@@ -21,7 +21,6 @@ import {
 import type { ZodType } from 'zod';
 
 export const concertRouter = Router();
-const concertService = new ConcertService();
 const upload = multer({ storage: multer.memoryStorage() });
 
 function readConcertRequest<T>(req: Request, schema: ZodType<T>): { input: T; image?: UploadedImage } {

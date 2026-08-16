@@ -34,13 +34,13 @@ export class User {
   @Column({ type: 'boolean', default: false })
   emailVerified!: boolean;
 
-  @Column({ type: 'datetime' })
+  @Column({ type: 'timestamptz' })
   lastLoginAt!: Date;
 
-  @CreateDateColumn({ type: 'datetime' })
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'datetime' })
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 
   @OneToMany(() => NotificationDevice, (device) => device.user)

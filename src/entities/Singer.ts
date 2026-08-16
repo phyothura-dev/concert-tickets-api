@@ -15,7 +15,7 @@ export class Singer {
   title!: string;
 
   @Index()
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: 'uuid', nullable: true })
   categoryId!: string | null;
 
   @ManyToOne(() => Category, (category) => category.singers, {
@@ -25,10 +25,10 @@ export class Singer {
   @JoinColumn({ name: 'categoryId' })
   category!: Category | null;
 
-  @CreateDateColumn({ type: 'datetime' })
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'datetime' })
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 
   @ManyToMany(() => Concert, (concert) => concert.singers)

@@ -15,7 +15,7 @@ export class Concert {
   @Column({ type: "text" })
   venue!: string;
 
-  @Column({ type: "datetime" })
+  @Column({ type: "timestamptz" })
   startsAt!: Date;
 
   @Column({ type: 'text', nullable: true })

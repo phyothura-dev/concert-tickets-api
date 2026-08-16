@@ -1,12 +1,12 @@
 import { In, LessThanOrEqual } from 'typeorm';
 import { PaymentSubmission } from '../entities/PaymentSubmission';
 import { Reservation } from '../entities/Reservation';
-import { withImmediateTransaction } from '../lib/transaction';
+import { withTransaction } from '../lib/transaction';
 import { ReservationService } from './reservation.service';
 
 export class CleanupService {
   async cleanupExpiredReservations(now: Date = new Date()): Promise<{ expired: number }> {
-    return withImmediateTransaction(async (queryRunner) => {
+    return withTransaction(async (queryRunner) => {
       const expired = await queryRunner.manager.find(Reservation, {
         where: {
           status: In(['PENDING', 'UNDER_REVIEW']),
@@ -19,7 +19,7 @@ export class CleanupService {
       if (expired.length > 0) {
         await queryRunner.manager.createQueryBuilder().update(PaymentSubmission)
           .set({ status: 'EXPIRED' })
-          .where('reservationId IN (:...ids) AND status = :status', {
+          .where('"reservationId" IN (:...ids) AND status = :status', {
             ids: expired.map((item) => item.id), status: 'PENDING_REVIEW',
           }).execute();
       }
@@ -27,3 +27,5 @@ export class CleanupService {
     });
   }
 }
+
+export const cleanupService = new CleanupService();

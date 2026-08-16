@@ -4,14 +4,13 @@ import { asyncHandler } from '../middleware/async-handler';
 import { requireAuthMiddleware } from '../middleware/auth.middleware';
 import { requireAdminMiddleware } from '../middleware/authorization.middleware';
 import { validateBody, validateParams, validateQuery } from '../middleware/validate.middleware';
-import { PaymentService } from '../services/payment.service';
+import { paymentService } from '../services/payment.service';
 import {
   paymentListQuerySchema, paymentParamsSchema, reviewPaymentSchema,
   type PaymentListQuery, type PaymentParams, type ReviewPaymentInput,
 } from '../validations/payment.validation';
 
 export const paymentRouter = Router();
-const paymentService = new PaymentService();
 
 paymentRouter.use(requireAuthMiddleware);
 
@@ -33,3 +32,4 @@ paymentRouter.patch('/:id/review', requireAdminMiddleware, validateParams(paymen
   const payment = await paymentService.review(req.params.id, req.user!.userId, req.body);
   res.status(200).json({ message: `Payment ${req.body.decision === 'APPROVE' ? 'approved' : 'rejected'}`, data: toPaymentDto(payment) });
 }));
+

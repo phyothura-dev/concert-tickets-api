@@ -1,6 +1,6 @@
 # Ticket Reservation API (Bootcamp Assignment)
 
-Concert ticket reservation bootcamp backend assignment built with Node.js + TypeScript + Express + TypeORM (SQLite).
+Concert ticket reservation bootcamp backend assignment built with Node.js + TypeScript + Express + TypeORM (PostgreSQL).
 
 ## Features
 
@@ -11,7 +11,7 @@ Concert ticket reservation bootcamp backend assignment built with Node.js + Type
 - Purchase
   - reservation purchase: `POST /purchase`
   - direct purchase (optimistic): `POST /purchase/optimistic`
-  - direct purchase (pessimistic / SQLite writer lock): `POST /purchase/pessimistic`
+  - direct purchase (pessimistic / PostgreSQL row lock): `POST /purchase/pessimistic`
 - Cleanup expired reservations
   - manual: `POST /cleanup`
   - background: runs every minute in-process
@@ -33,7 +33,7 @@ Concert ticket reservation bootcamp backend assignment built with Node.js + Type
 - TypeScript (strict)
 - Express
 - TypeORM
-- SQLite (`better-sqlite3`)
+- PostgreSQL (`pg`)
 - Zod (validation)
 - Pino (JSON logs + AsyncLocalStorage correlationId)
 - Redis (rate limiting store via `rate-limit-redis`, fallback supported)
@@ -61,7 +61,7 @@ src/
 
 - Indexing strategy for hot paths (concertId + reservation status/expiry)
 - Transactions and atomic updates to prevent overselling
-- Concurrency strategies (optimistic vs pessimistic) on SQLite
+- Concurrency strategies (optimistic updates vs PostgreSQL row locks)
 - API validation with consistent error envelopes
 
 ## API Routes
@@ -97,7 +97,7 @@ Admin-created users receive a hashed default password. Override the local
 npm install
 cp .env.development .env
 
-# Set GOOGLE_CLIENT_ID, AUTH_JWT_SECRET, AUTH_JWT_EXPIRES_IN_SECONDS, and ADMIN_GOOGLE_SUBS before Google auth testing.
+# Set DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD and auth variables.
 
 npm run migration:run
 npm run seed
@@ -117,7 +117,7 @@ curl http://localhost:4000/
 
 ```bash
 cp .env.production.example .env.production
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
 Full guide: `docs/deploy-ec2.md`

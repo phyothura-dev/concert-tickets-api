@@ -1,8 +1,8 @@
 import pino, { type Logger, type LoggerOptions } from 'pino';
 import { getCorrelationId } from './request-context';
+import { env } from '../config/env';
 
-const isProduction = process.env['NODE_ENV'] === 'production';
-const logLevel = process.env['LOG_LEVEL'] ?? (isProduction ? 'info' : 'debug');
+const logLevel = env.logLevel ?? (env.isProduction ? 'info' : 'debug');
 
 const baseOptions: LoggerOptions = {
   level: logLevel,
@@ -17,7 +17,7 @@ const baseOptions: LoggerOptions = {
   },
 };
 
-const prettyTransport = !isProduction
+const prettyTransport = !env.isProduction
   ? {
       target: 'pino-pretty',
       options: {

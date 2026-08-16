@@ -3,6 +3,7 @@ import { User } from '../entities/User';
 import { ConflictError, InternalError, NotFoundError } from '../lib/errors';
 import { hashPassword } from '../lib/password';
 import type { CreateUserInput, UpdateUserInput } from '../validations/user.validation';
+import { env } from '../config/env';
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -11,7 +12,7 @@ function normalizeEmail(email: string): string {
 const ADMIN_CREATED_USER_DEFAULT_PASSWORD = 'ChangeMe123!';
 
 function getAdminCreatedUserDefaultPassword(): string {
-  const configuredPassword = process.env['ADMIN_CREATED_USER_DEFAULT_PASSWORD'];
+  const configuredPassword = env.adminCreatedUserDefaultPassword;
   if (configuredPassword === undefined) {
     return ADMIN_CREATED_USER_DEFAULT_PASSWORD;
   }
@@ -49,16 +50,14 @@ export class UserService {
     }
 
     const user = repo.create({
-      googleSub: null,
+      ...input,
       email,
+      googleSub: null,
       passwordHash: await hashPassword(getAdminCreatedUserDefaultPassword()),
-      role: input.role,
-      status: input.status,
-      name: input.name.trim(),
       pictureUrl: null,
       emailVerified: false,
       lastLoginAt: new Date(),
-    });
+    } as Partial<User>);
     return repo.save(user);
   }
 
@@ -66,30 +65,20 @@ export class UserService {
     const repo = AppDataSource.getRepository(User);
     const user = await this.getUser(id);
 
-    if (input.email !== undefined) {
-      const email = normalizeEmail(input.email);
-      const existing = await repo.findOne({ where: { email } });
+    const { email, ...scalarInput } = input;
+
+    if (email !== undefined) {
+      const normalized = normalizeEmail(email);
+      const existing = await repo.findOne({ where: { email: normalized } });
       if (existing && existing.id !== id) {
         throw new ConflictError('EMAIL_ALREADY_EXISTS', 'An account with this email already exists');
       }
-      user.email = email;
-    }
-    if (input.name !== undefined) {
-      user.name = input.name?.trim() ?? null;
-    }
-    if (input.pictureUrl !== undefined) {
-      user.pictureUrl = input.pictureUrl?.trim() ?? null;
-    }
-    if (input.role !== undefined) {
-      user.role = input.role;
-    }
-    if (input.status !== undefined) {
-      user.status = input.status;
-    }
-    if (input.emailVerified !== undefined) {
-      user.emailVerified = input.emailVerified;
+      user.email = normalized;
     }
 
+    repo.merge(user, scalarInput as never);
     return repo.save(user);
   }
 }
+
+export const userService = new UserService();

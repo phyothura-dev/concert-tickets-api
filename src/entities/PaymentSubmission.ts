@@ -22,7 +22,7 @@ export class PaymentSubmission {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'text' })
+  @Column({ type: 'uuid' })
   reservationId!: string;
 
   @OneToOne(() => Reservation, (reservation) => reservation.payment, { onDelete: 'RESTRICT' })
@@ -47,7 +47,7 @@ export class PaymentSubmission {
   @Column({ type: 'text' })
   sha256!: string;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: 'uuid', nullable: true })
   reviewerId!: string | null;
 
   @ManyToOne(() => User, (user) => user.reviewedPayments, {
@@ -60,12 +60,12 @@ export class PaymentSubmission {
   @Column({ type: 'text', nullable: true })
   rejectionReason!: string | null;
 
-  @CreateDateColumn({ type: 'datetime' })
+  @CreateDateColumn({ type: 'timestamptz' })
   submittedAt!: Date;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   reviewedAt!: Date | null;
 
-  @UpdateDateColumn({ type: 'datetime' })
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 }

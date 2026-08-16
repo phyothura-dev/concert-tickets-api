@@ -2,9 +2,6 @@ FROM node:20-bookworm-slim AS dev
 WORKDIR /app
 ENV NODE_ENV=development
 
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
-  && rm -rf /var/lib/apt/lists/*
-
 COPY package*.json ./
 RUN npm ci
 
@@ -28,7 +25,6 @@ COPY --from=dev /app/package.json ./package.json
 COPY --from=dev /app/dist ./dist
 
 RUN useradd -m -u 10001 nodeapp \
-  && mkdir -p /app/data \
   && chown -R nodeapp:nodeapp /app
 
 USER nodeapp

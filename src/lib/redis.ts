@@ -1,12 +1,13 @@
 import Redis, { type Redis as RedisClient } from 'ioredis';
 import { logger } from './logger';
+import { env } from '../config/env';
 
 let client: RedisClient | null = null;
 
 export function getRedisClient(): RedisClient | null {
   if (client) return client;
 
-  const url = process.env['REDIS_URL'];
+  const url = env.redis.url;
   if (!url) return null;
 
   client = new Redis(url, {

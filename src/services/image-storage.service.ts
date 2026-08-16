@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { InternalError } from '../lib/errors';
 import type { UploadedImage } from '../validations/image.validation';
+import { env } from '../config/env';
 
 type CloudinaryUploadResult = {
   format: string;
@@ -30,12 +31,14 @@ type CloudinaryClient = {
 
 const cloudinary = (require('cloudinary') as { v2: CloudinaryClient }).v2;
 
-function requiredEnv(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    throw new InternalError('Cloudinary storage is not configured', { missingEnvironmentVariable: name }, 'IMAGE_STORAGE_MISCONFIGURED');
+function getCloudinaryConfig() {
+  const cloudName = env.cloudinary.cloudName;
+  const apiKey = env.cloudinary.apiKey;
+  const apiSecret = env.cloudinary.apiSecret;
+  if (!cloudName || !apiKey || !apiSecret) {
+    throw new InternalError('Cloudinary storage is not configured', null, 'IMAGE_STORAGE_MISCONFIGURED');
   }
-  return value;
+  return { cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret, secure: true };
 }
 
 function parseStorageKey(storageKey: string): { format: string; publicId: string } {
@@ -62,12 +65,7 @@ export class ImageStorageService {
 
   private configure(): void {
     if (this.configured) return;
-    cloudinary.config({
-      cloud_name: requiredEnv('CLOUDINARY_CLOUD_NAME'),
-      api_key: requiredEnv('CLOUDINARY_API_KEY'),
-      api_secret: requiredEnv('CLOUDINARY_API_SECRET'),
-      secure: true,
-    });
+    cloudinary.config(getCloudinaryConfig());
     this.configured = true;
   }
 
@@ -150,3 +148,5 @@ export class ImageStorageService {
     }
   }
 }
+
+export const imageStorageService = new ImageStorageService();

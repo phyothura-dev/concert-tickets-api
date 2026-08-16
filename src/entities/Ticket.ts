@@ -12,7 +12,7 @@ export class Ticket {
   id!: string;
 
   @Index()
-  @Column({ type: 'text' })
+  @Column({ type: 'uuid' })
   concertId!: string;
 
   @ManyToOne(() => Concert, (c) => c.tickets, { onDelete: 'CASCADE' })

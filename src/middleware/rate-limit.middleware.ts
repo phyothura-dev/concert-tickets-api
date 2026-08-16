@@ -4,6 +4,7 @@ import { type NextFunction, type Request, type Response } from 'express';
 import { RateLimitError } from '../lib/errors';
 import { getRedisClient } from '../lib/redis';
 import { logger } from '../lib/logger';
+import { env } from '../config/env';
 
 const RESERVE_WINDOW_MS = 60 * 1000;
 const RESERVE_MAX = 5;
@@ -11,7 +12,7 @@ const AUTH_WINDOW_MS = 60 * 1000;
 const AUTH_MAX = 20;
 
 function buildStore(prefix: string): Store | undefined {
-  if (process.env['RATE_LIMIT_FALLBACK'] === 'memory') {
+  if (env.rateLimitFallback === 'memory') {
     logger.warn('RATE_LIMIT_FALLBACK=memory; using in-memory rate limiter store (NOT for production)');
     return undefined;
   }

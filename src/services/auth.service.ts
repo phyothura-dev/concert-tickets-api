@@ -5,6 +5,7 @@ import { AuthenticationError, ConflictError, InternalError, ValidationError } fr
 import { signJwt } from '../lib/auth-jwt';
 import { hashPassword, verifyPassword } from '../lib/password';
 import type { GoogleSignInInput, LoginInput, RegisterInput } from '../validations/auth.validation';
+import { env } from '../config/env';
 
 export type AuthResult = {
   user: User;
@@ -14,7 +15,7 @@ export type AuthResult = {
 const googleClient = new OAuth2Client();
 
 function getGoogleClientId(): string {
-  const clientId = process.env['GOOGLE_CLIENT_ID'];
+  const clientId = env.google.clientId;
   if (!clientId) {
     throw new InternalError('Google Sign-In is not configured', null, 'GOOGLE_AUTH_MISCONFIGURED');
   }
@@ -22,7 +23,7 @@ function getGoogleClientId(): string {
 }
 
 function getAdminGoogleSubs(): Set<string> {
-  const raw = process.env['ADMIN_GOOGLE_SUBS'] ?? '';
+  const raw = env.adminGoogleSubs!;
   return new Set(
     raw
       .split(',')
@@ -177,3 +178,5 @@ export class AuthService {
     return user;
   }
 }
+
+export const authService = new AuthService();

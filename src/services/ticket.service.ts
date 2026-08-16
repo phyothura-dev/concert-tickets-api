@@ -16,9 +16,13 @@ export class TicketService {
     try {
       return await manager.save(Ticket, ticket);
     } catch (error) {
+      const databaseError = error instanceof QueryFailedError
+        ? error.driverError as { code?: string; constraint?: string }
+        : null;
       if (
         error instanceof QueryFailedError
-        && /UNIQUE constraint failed: tickets\.concertId, tickets\.type/i.test(error.message)
+        && databaseError?.code === '23505'
+        && databaseError.constraint === 'idx_tickets_concertId_type'
       ) {
         throw new ConflictError(
           'TICKET_TYPE_ALREADY_EXISTS',
@@ -30,7 +34,7 @@ export class TicketService {
   }
 
   private seatLabel(type: TicketType, sequence: number): string {
-    return type + '-' + sequence.toString().padStart(3, '0');
+    return `${type}-${sequence.toString().padStart(3, '0')}`;
   }
 
   private async createSeats(
@@ -169,10 +173,10 @@ export class TicketService {
         ticket.remainingStock += delta;
       }
 
-      if (input.price !== undefined) ticket.price = input.price;
-      if (input.concertId !== undefined) ticket.concertId = input.concertId;
+      const { totalStock, ...scalarInput } = input;
+      manager.merge(Ticket, ticket, scalarInput);
+
       if (input.type !== undefined && input.type !== ticket.type) {
-        ticket.type = input.type;
         const seats = await manager.find(Seat, { where: { ticketId: ticket.id } });
         for (const seat of seats) {
           seat.label = this.seatLabel(input.type, seat.sequence);
@@ -199,3 +203,5 @@ export class TicketService {
     return { deleted: true };
   }
 }
+
+export const ticketService = new TicketService();

@@ -6,23 +6,18 @@ import type { RegisterNotificationTokenInput, RemoveNotificationTokenInput } fro
 export class NotificationService {
   async registerToken(userId: string, input: RegisterNotificationTokenInput): Promise<NotificationDeviceDto> {
     const repo = AppDataSource.getRepository(NotificationDevice);
-    const now = new Date();
     let device = await repo.findOne({ where: { fcmToken: input.token } });
 
     if (!device) {
-      device = repo.create({
-        userId,
-        fcmToken: input.token,
-        platform: input.platform ?? null,
-        enabled: true,
-        lastSeenAt: now,
-      });
-    } else {
-      device.userId = userId;
-      device.platform = input.platform ?? device.platform;
-      device.enabled = true;
-      device.lastSeenAt = now;
+      device = repo.create({ fcmToken: input.token });
     }
+
+    repo.merge(device, {
+      userId,
+      platform: input.platform ?? device.platform ?? null,
+      enabled: true,
+      lastSeenAt: new Date(),
+    } as never);
 
     return toNotificationDeviceDto(await repo.save(device));
   }
@@ -42,3 +37,5 @@ export class NotificationService {
     return { disabled: true };
   }
 }
+
+export const notificationService = new NotificationService();

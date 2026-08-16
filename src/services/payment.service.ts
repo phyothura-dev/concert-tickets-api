@@ -3,13 +3,13 @@ import { PaymentSubmission, type PaymentMethod, type PaymentStatus } from '../en
 import { Reservation } from '../entities/Reservation';
 import { Seat } from '../entities/Seat';
 import { ConflictError, ForbiddenError, NotFoundError } from '../lib/errors';
-import { withImmediateTransaction } from '../lib/transaction';
+import { withTransaction } from '../lib/transaction';
 import type { UploadedImage } from '../validations/image.validation';
 import type { PaymentListQuery, ReviewPaymentInput } from '../validations/payment.validation';
 import { ImageStorageService } from './image-storage.service';
 import { ReservationService } from './reservation.service';
 
-const REVIEW_HOLD_MS = 24 * 60 * 60 * 1000;
+import { PAYMENT_REVIEW_HOLD_MS } from '../config/constants';
 const paymentRelations = {
   reservation: {
     concert: true,
@@ -64,9 +64,10 @@ export class PaymentService {
   ): Promise<PaymentSubmission> {
     const stored = await this.storage.savePrivate(file, 'payment-proofs');
     try {
-      const paymentId = await withImmediateTransaction(async (queryRunner) => {
+      const paymentId = await withTransaction(async (queryRunner) => {
         const reservation = await queryRunner.manager.findOne(Reservation, {
           where: { id: reservationId },
+          lock: { mode: 'pessimistic_write' },
         });
         if (!reservation) throw new NotFoundError('Reservation not found', null, 'RESERVATION_NOT_FOUND');
         if (reservation.userId !== userId) throw new ForbiddenError('Reservation access denied', null, 'RESERVATION_ACCESS_DENIED');
@@ -89,7 +90,7 @@ export class PaymentService {
           rejectionReason: null,
           reviewedAt: null,
         }));
-        const expiresAt = new Date(Date.now() + REVIEW_HOLD_MS);
+        const expiresAt = new Date(Date.now() + PAYMENT_REVIEW_HOLD_MS);
         reservation.status = 'UNDER_REVIEW';
         reservation.expiresAt = expiresAt;
         await queryRunner.manager.save(Reservation, reservation);
@@ -108,11 +109,18 @@ export class PaymentService {
   }
 
   async review(id: string, reviewerId: string, input: ReviewPaymentInput): Promise<PaymentSubmission> {
-    const outcome = await withImmediateTransaction(async (queryRunner) => {
+    const outcome = await withTransaction(async (queryRunner) => {
       const payment = await queryRunner.manager.findOne(PaymentSubmission, {
-        where: { id }, relations: { reservation: true },
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
       });
       if (!payment) throw new NotFoundError('Payment submission not found', null, 'PAYMENT_NOT_FOUND');
+      const reservation = await queryRunner.manager.findOne(Reservation, {
+        where: { id: payment.reservationId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!reservation) throw new NotFoundError('Reservation not found', null, 'RESERVATION_NOT_FOUND');
+      payment.reservation = reservation;
       if (payment.status !== 'PENDING_REVIEW' || payment.reservation.status !== 'UNDER_REVIEW') {
         throw new ConflictError('PAYMENT_ALREADY_REVIEWED', 'Payment is no longer awaiting review');
       }
@@ -129,7 +137,7 @@ export class PaymentService {
       if (input.decision === 'APPROVE') {
         const sold = await queryRunner.manager.createQueryBuilder().update(Seat).set({
           status: 'SOLD', holdExpiresAt: null,
-        }).where('currentReservationId = :id AND status = :status', {
+        }).where('"currentReservationId" = :id AND status = :status', {
           id: payment.reservationId, status: 'HELD',
         }).execute();
         if (sold.affected !== payment.reservation.quantity) {
@@ -159,3 +167,5 @@ export class PaymentService {
     return { bytes: await this.storage.readPrivate(payment.storageKey), mimeType: payment.mimeType };
   }
 }
+
+export const paymentService = new PaymentService();

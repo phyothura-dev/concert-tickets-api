@@ -1,7 +1,7 @@
 import AppDataSource from '../data-source';
 import { Category } from '../entities/Category';
 import { Singer } from '../entities/Singer';
-import { ConflictError, NotFoundError } from '../lib/errors';
+import { NotFoundError } from '../lib/errors';
 import { withTransaction } from '../lib/transaction';
 import type { CreateCategoryInput, UpdateCategoryInput } from '../validations/category.validation';
 
@@ -20,47 +20,15 @@ export class CategoryService {
     return category;
   }
 
-  private async ensureSlugAvailable(slug: string, currentId?: string): Promise<void> {
-    const existing = await AppDataSource.getRepository(Category).findOne({ where: { slug } });
-    if (existing && existing.id !== currentId) {
-      throw new ConflictError('CATEGORY_SLUG_EXISTS', 'Category slug already exists');
-    }
-  }
-
   async createCategory(input: CreateCategoryInput): Promise<Category> {
     const repo = AppDataSource.getRepository(Category);
-    const name = input.name.trim();
-    const slug = input.slug?.trim();
-
-    if (!slug) {
-      throw new ConflictError('CATEGORY_SLUG_INVALID', 'Category slug could not be generated');
-    }
-
-    await this.ensureSlugAvailable(slug);
-
-    const category = repo.create({ name, slug });
-    return repo.save(category);
+    return repo.save(repo.create(input as Partial<Category>));
   }
 
   async updateCategory(id: string, input: UpdateCategoryInput): Promise<Category> {
     const repo = AppDataSource.getRepository(Category);
     const category = await this.getCategory(id);
-
-    if (input.name !== undefined) {
-      category.name = input.name.trim();
-    }
-
-    if (input.slug !== undefined) {
-      category.slug = input.slug.trim();
-    } else if (input.name !== undefined) {
-      category.slug = category.name.toLowerCase();
-    }
-
-    if (!category.slug) {
-      throw new ConflictError('CATEGORY_SLUG_INVALID', 'Category slug could not be generated');
-    }
-
-    await this.ensureSlugAvailable(category.slug, id);
+    repo.merge(category, input as never);
     return repo.save(category);
   }
 
@@ -78,3 +46,5 @@ export class CategoryService {
     });
   }
 }
+
+export const categoryService = new CategoryService();

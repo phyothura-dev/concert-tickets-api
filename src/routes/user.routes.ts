@@ -4,7 +4,7 @@ import { requireAdminMiddleware } from '../middleware/authorization.middleware';
 import { requireAuthMiddleware } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/async-handler';
 import { validateBody, validateParams } from '../middleware/validate.middleware';
-import { UserService } from '../services/user.service';
+import { userService } from '../services/user.service';
 import {
   createUserSchema,
   updateUserSchema,
@@ -15,7 +15,7 @@ import {
 } from '../validations/user.validation';
 
 export const userRouter = Router();
-const userService = new UserService();
+
 
 userRouter.get('/', requireAuthMiddleware, requireAdminMiddleware, asyncHandler(async (_req: Request, res: Response) => {
   const users = await userService.listUsers();

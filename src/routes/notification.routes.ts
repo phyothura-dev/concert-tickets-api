@@ -3,7 +3,7 @@ import { asyncHandler } from '../middleware/async-handler';
 import { requireAuthMiddleware } from '../middleware/auth.middleware';
 import { authLimiter } from '../middleware/rate-limit.middleware';
 import { validateBody } from '../middleware/validate.middleware';
-import { NotificationService } from '../services/notification.service';
+import { notificationService } from '../services/notification.service';
 import {
   registerNotificationTokenSchema,
   removeNotificationTokenSchema,
@@ -12,8 +12,6 @@ import {
 } from '../validations/notification.validation';
 
 export const notificationRouter = Router();
-
-const notificationService = new NotificationService();
 
 notificationRouter.post(
   '/register-token',
@@ -36,3 +34,4 @@ notificationRouter.delete(
     res.status(200).json({ message: 'Notification token disabled successfully', data: result });
   }),
 );
+

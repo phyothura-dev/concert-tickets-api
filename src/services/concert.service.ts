@@ -79,8 +79,8 @@ export class ConcertService {
           OR EXISTS (
             SELECT 1
             FROM concert_singers cs_filter
-            INNER JOIN singers s_filter ON s_filter.id = cs_filter.singerId
-            WHERE cs_filter.concertId = c.id
+            INNER JOIN singers s_filter ON s_filter.id = cs_filter."singerId"
+            WHERE cs_filter."concertId" = c.id
               AND LOWER(s_filter.name) LIKE :search
           )
         )`,
@@ -97,8 +97,8 @@ export class ConcertService {
         `EXISTS (
           SELECT 1
           FROM concert_categories cc_filter
-          WHERE cc_filter.concertId = c.id
-            AND cc_filter.categoryId = :categoryId
+          WHERE cc_filter."concertId" = c.id
+            AND cc_filter."categoryId" = :categoryId
         )`,
         { categoryId: filters.categoryId },
       );
@@ -146,12 +146,12 @@ export class ConcertService {
 
     const rows = await AppDataSource.getRepository(Category)
       .createQueryBuilder('cat')
-      .innerJoin('concert_categories', 'cc', 'cc.categoryId = cat.id')
-      .select('cc.concertId', 'concertId')
+      .innerJoin('concert_categories', 'cc', 'cc."categoryId" = cat.id')
+      .select('cc."concertId"', 'concertId')
       .addSelect('cat.id', 'id')
       .addSelect('cat.name', 'name')
       .addSelect('cat.slug', 'slug')
-      .where('cc.concertId IN (:...concertIds)', { concertIds })
+      .where('cc."concertId" IN (:...concertIds)', { concertIds })
       .orderBy('cat.name', 'ASC')
       .getRawMany<{ concertId: string; id: string; name: string; slug: string }>();
 
@@ -172,9 +172,9 @@ export class ConcertService {
 
     const rows = await AppDataSource.getRepository(Singer)
       .createQueryBuilder('s')
-      .innerJoin('concert_singers', 'cs', 'cs.singerId = s.id')
+      .innerJoin('concert_singers', 'cs', 'cs."singerId" = s.id')
       .leftJoin(Category, 'cat', 'cat.id = s.categoryId')
-      .select('cs.concertId', 'concertId')
+      .select('cs."concertId"', 'concertId')
       .addSelect('s.id', 'id')
       .addSelect('s.name', 'name')
       .addSelect('s.title', 'title')
@@ -183,7 +183,7 @@ export class ConcertService {
       .addSelect('cat.slug', 'categorySlug')
       .addSelect('s.createdAt', 'createdAt')
       .addSelect('s.updatedAt', 'updatedAt')
-      .where('cs.concertId IN (:...concertIds)', { concertIds })
+      .where('cs."concertId" IN (:...concertIds)', { concertIds })
       .orderBy('s.name', 'ASC')
       .getRawMany<{
         concertId: string;
@@ -259,7 +259,7 @@ export class ConcertService {
       .createQueryBuilder()
       .delete()
       .from('concert_categories')
-      .where('concertId = :concertId', { concertId })
+      .where('"concertId" = :concertId', { concertId })
       .execute();
 
     if (categoryIds.length > 0) {
@@ -277,7 +277,7 @@ export class ConcertService {
       .createQueryBuilder()
       .delete()
       .from('concert_singers')
-      .where('concertId = :concertId', { concertId })
+      .where('"concertId" = :concertId', { concertId })
       .execute();
 
     if (singerIds.length === 0) {
@@ -309,8 +309,8 @@ export class ConcertService {
         const singerIds = await this.ensureSingersExistOrThrow(input.singerIds ?? [], queryRunner.manager);
 
         const entity = queryRunner.manager.create(Concert, {
-          title: input.title.trim(),
-          venue: input.venue.trim(),
+          title: input.title,
+          venue: input.venue,
           startsAt: input.startsAt,
           imageUrl: uploadedImageUrl ?? null,
         });
@@ -343,25 +343,17 @@ export class ConcertService {
         }
         previousImageUrl = concert.imageUrl;
 
-        if (input.title !== undefined) {
-          concert.title = input.title.trim();
-        }
-        if (input.venue !== undefined) {
-          concert.venue = input.venue.trim();
-        }
-        if (input.startsAt !== undefined) {
-          concert.startsAt = input.startsAt;
-        }
-        if (input.categoryIds !== undefined) {
-          const categoryIds = await this.ensureCategoriesExistOrThrow(input.categoryIds, queryRunner.manager);
+        const { categoryIds: inputCategoryIds, singerIds: inputSingerIds, ...scalarInput } = input;
+        const updates = uploadedImageUrl ? { ...scalarInput, imageUrl: uploadedImageUrl } : scalarInput;
+        queryRunner.manager.merge(Concert, concert, updates as never);
+
+        if (inputCategoryIds !== undefined) {
+          const categoryIds = await this.ensureCategoriesExistOrThrow(inputCategoryIds, queryRunner.manager);
           await this.replaceConcertCategories(queryRunner.manager, id, categoryIds);
         }
-        if (input.singerIds !== undefined) {
-          const singerIds = await this.ensureSingersExistOrThrow(input.singerIds, queryRunner.manager);
+        if (inputSingerIds !== undefined) {
+          const singerIds = await this.ensureSingersExistOrThrow(inputSingerIds, queryRunner.manager);
           await this.replaceConcertSingers(queryRunner.manager, id, singerIds);
-        }
-        if (uploadedImageUrl) {
-          concert.imageUrl = uploadedImageUrl;
         }
 
         await queryRunner.manager.save(concert);
@@ -398,3 +390,5 @@ export class ConcertService {
     return result;
   }
 }
+
+export const concertService = new ConcertService();

@@ -7,18 +7,15 @@ import { requireAdminMiddleware } from '../middleware/authorization.middleware';
 import { reserveLimiter } from '../middleware/rate-limit.middleware';
 import { parseSchema, validateBody, validateParams } from '../middleware/validate.middleware';
 import multer from 'multer';
-import { CleanupService } from '../services/cleanup.service';
-import { PaymentService } from '../services/payment.service';
-import { ReservationService } from '../services/reservation.service';
+import { cleanupService } from '../services/cleanup.service';
+import { paymentService } from '../services/payment.service';
+import { reservationService } from '../services/reservation.service';
 import { submitPaymentSchema } from '../validations/payment.validation';
 import {
   reservationParamsSchema, reserveSchema, type ReservationParams, type ReserveInput,
 } from '../validations/reservation.validation';
 
 export const reservationRouter = Router();
-const reservationService = new ReservationService();
-const cleanupService = new CleanupService();
-const paymentService = new PaymentService();
 const upload = multer({ storage: multer.memoryStorage() });
 
 reservationRouter.get('/reservations/me', requireAuthMiddleware, asyncHandler(async (req: Request, res: Response) => {
@@ -64,3 +61,4 @@ reservationRouter.post('/cleanup', requireAuthMiddleware, requireAdminMiddleware
   const result = await cleanupService.cleanupExpiredReservations();
   res.status(200).json({ message: 'Expired reservations cleaned up successfully', data: result });
 }));
+

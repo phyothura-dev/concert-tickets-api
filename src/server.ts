@@ -1,5 +1,4 @@
 import 'reflect-metadata';
-import { config } from 'dotenv';
 import { type Server } from 'node:http';
 import AppDataSource from './data-source';
 import { logger } from './lib/logger';
@@ -7,15 +6,11 @@ import { getInFlightCount, isShutdownInProgress, markShuttingDown } from './lib/
 import { closeRedis } from './lib/redis';
 import { startCleanupCron, type CleanupCronHandle } from './jobs/cleanup.cron';
 import { closeSentry, initSentry } from './lib/sentry';
+import { env } from './config/env';
 
-config();
 initSentry();
 
-const port = Number.parseInt(process.env['PORT'] ?? '3000', 10);
-
-if (Number.isNaN(port) || port < 1 || port > 65535) {
-  throw new Error(`Invalid PORT: ${process.env['PORT'] ?? ''}`);
-}
+const port = env.port;
 
 const SHUTDOWN_GRACE_MS = 5000;
 const POLL_INTERVAL_MS = 100;

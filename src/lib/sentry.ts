@@ -1,6 +1,7 @@
 import * as Sentry from '@sentry/node';
 import type { Request } from 'express';
 import { isAppError } from './errors';
+import { env } from '../config/env';
 
 const CONCURRENCY_ERROR_CODES = new Set(['VERSION_CONFLICT', 'LOCK_CONFLICT', 'NOT_ENOUGH_STOCK']);
 
@@ -25,9 +26,9 @@ function pickSafeRequestBody(req: Request): Record<string, unknown> | undefined 
 
 export function initSentry(): void {
   Sentry.init({
-    dsn: process.env['SENTRY_DSN'],
+    dsn: env.sentry.dsn,
     enabled: true,
-    environment: process.env['SENTRY_ENVIRONMENT'] ?? process.env['NODE_ENV'] ?? 'development',
+    environment: env.sentry.environment ?? env.nodeEnv,
     tracesSampleRate: 1,
     sendDefaultPii: false,
   });

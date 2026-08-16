@@ -4,7 +4,7 @@ import { requireAdminMiddleware } from '../middleware/authorization.middleware';
 import { requireAuthMiddleware } from '../middleware/auth.middleware';
 import { asyncHandler } from '../middleware/async-handler';
 import { validateBody, validateParams } from '../middleware/validate.middleware';
-import { SingerService } from '../services/singer.service';
+import { singerService } from '../services/singer.service';
 import {
   createSingerSchema,
   singerParamsSchema,
@@ -15,7 +15,7 @@ import {
 } from '../validations/singer.validation';
 
 export const singerRouter = Router();
-const singerService = new SingerService();
+
 
 singerRouter.get('/', asyncHandler(async (_req: Request, res: Response) => {
   const singers = await singerService.listSingers();

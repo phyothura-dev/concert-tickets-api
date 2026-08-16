@@ -9,7 +9,7 @@ export class ReservationSeat {
   id!: string;
 
   @Index()
-  @Column({ type: 'text' })
+  @Column({ type: 'uuid' })
   reservationId!: string;
 
   @ManyToOne(() => Reservation, (reservation) => reservation.seatAssignments, {
@@ -18,7 +18,7 @@ export class ReservationSeat {
   @JoinColumn({ name: 'reservationId' })
   reservation!: Reservation;
 
-  @Column({ type: 'text' })
+  @Column({ type: 'uuid' })
   seatId!: string;
 
   @ManyToOne(() => Seat, (seat) => seat.assignments, { onDelete: 'RESTRICT' })

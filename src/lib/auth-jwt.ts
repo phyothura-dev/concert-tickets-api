@@ -2,6 +2,7 @@ import type { CookieOptions } from 'express';
 import jwt, { type JwtPayload, type SignOptions, type VerifyOptions } from 'jsonwebtoken';
 import { AuthenticationError, InternalError } from './errors';
 import type { UserRole } from '../entities/User';
+import { env } from '../config/env';
 
 export type AuthTokenPayload = {
   userId: string;
@@ -15,7 +16,7 @@ const AUTH_JWT_ISSUER = 'concert-tickets-api';
 const DEFAULT_AUTH_JWT_EXPIRES_IN_SECONDS = 7 * 24 * 60 * 60;
 
 function getAuthJwtSecret(): string {
-  const secret = process.env['AUTH_JWT_SECRET'];
+  const secret = env.auth.jwtSecret;
   if (!secret || secret.trim().length < 32) {
     throw new InternalError('Authentication is not configured', null, 'AUTH_MISCONFIGURED');
   }
@@ -23,7 +24,7 @@ function getAuthJwtSecret(): string {
 }
 
 function getAuthJwtExpiresInSeconds(): number {
-  const raw = process.env['AUTH_JWT_EXPIRES_IN_SECONDS'];
+  const raw = env.auth.jwtExpiresInSeconds;
   if (!raw) {
     return DEFAULT_AUTH_JWT_EXPIRES_IN_SECONDS;
   }
@@ -36,12 +37,12 @@ function getAuthJwtExpiresInSeconds(): number {
 }
 
 export function getAuthTokenCookieName(): string {
-  const name = process.env['AUTH_TOKEN_NAME'] ?? 'auth_token';
+  const name = env.auth.tokenName ?? 'auth_token';
   return name.trim();
 }
 
 export function getAuthTokenCookieOptions(): CookieOptions {
-  const secure = process.env['AUTH_COOKIE_SECURE'] === 'true' || process.env['NODE_ENV'] === 'production';
+  const secure = env.auth.cookieSecure === 'true' || env.isProduction;
   const maxAge = getAuthJwtExpiresInSeconds() * 1000;
   return {
     httpOnly: true,

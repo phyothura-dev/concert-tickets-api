@@ -5,10 +5,10 @@ import { ReservationSeat } from '../entities/ReservationSeat';
 import { Seat } from '../entities/Seat';
 import { Ticket } from '../entities/Ticket';
 import { ConflictError, ForbiddenError, NotFoundError } from '../lib/errors';
-import { withImmediateTransaction } from '../lib/transaction';
+import { withTransaction } from '../lib/transaction';
 import type { ReserveInput } from '../validations/reservation.validation';
 
-const INITIAL_HOLD_MS = 15 * 60 * 1000;
+import { RESERVATION_HOLD_MS } from '../config/constants';
 
 const relations = {
   concert: true,
@@ -39,7 +39,7 @@ export class ReservationService {
   }
 
   async reserve(input: ReserveInput, userId: string): Promise<Reservation> {
-    const savedId = await withImmediateTransaction(async (queryRunner) => {
+    const savedId = await withTransaction(async (queryRunner) => {
       const manager = queryRunner.manager;
       const ticket = await manager.findOne(Ticket, { where: { id: input.ticketId } });
       if (!ticket) throw new NotFoundError('Ticket not found', null, 'TICKET_NOT_FOUND');
@@ -51,7 +51,7 @@ export class ReservationService {
         throw new ConflictError('SEAT_UNAVAILABLE', 'One or more selected seats are unavailable');
       }
 
-      const expiresAt = new Date(Date.now() + INITIAL_HOLD_MS);
+      const expiresAt = new Date(Date.now() + RESERVATION_HOLD_MS);
       const reservation = await manager.save(Reservation, manager.create(Reservation, {
         concertId: ticket.concertId,
         ticketId: ticket.id,
@@ -65,7 +65,7 @@ export class ReservationService {
 
       const held = await manager.createQueryBuilder().update(Seat).set({
         status: 'HELD', currentReservationId: reservation.id, holdExpiresAt: expiresAt,
-      }).where('ticketId = :ticketId', { ticketId: ticket.id })
+      }).where('"ticketId" = :ticketId', { ticketId: ticket.id })
         .andWhere('id IN (:...seatIds)', { seatIds: input.seatIds })
         .andWhere('status = :status', { status: 'AVAILABLE' }).execute();
       if (held.affected !== seats.length) {
@@ -73,9 +73,9 @@ export class ReservationService {
       }
 
       const stock = await manager.createQueryBuilder().update(Ticket).set({
-        remainingStock: () => 'remainingStock - :quantity',
+        remainingStock: () => '"remainingStock" - :quantity',
         version: () => 'version + 1',
-      }).where('id = :ticketId AND remainingStock >= :quantity', {
+      }).where('id = :ticketId AND "remainingStock" >= :quantity', {
         ticketId: ticket.id, quantity: seats.length,
       }).execute();
       if (stock.affected !== 1) throw new ConflictError('NOT_ENOUGH_STOCK', 'Not enough remaining stock');
@@ -102,13 +102,13 @@ export class ReservationService {
     }
     const released = await manager.createQueryBuilder().update(Seat).set({
       status: 'AVAILABLE', currentReservationId: null, holdExpiresAt: null,
-    }).where('currentReservationId = :reservationId AND status = :held', {
+    }).where('"currentReservationId" = :reservationId AND status = :held', {
       reservationId: reservation.id, held: 'HELD',
     }).execute();
     const count = released.affected ?? 0;
     if (count > 0) {
       await manager.createQueryBuilder().update(Ticket).set({
-        remainingStock: () => 'remainingStock + :count',
+        remainingStock: () => '"remainingStock" + :count',
         version: () => 'version + 1',
       }).where('id = :ticketId', { ticketId: reservation.ticketId }).setParameter('count', count).execute();
     }
@@ -117,3 +117,5 @@ export class ReservationService {
     return count;
   }
 }
+
+export const reservationService = new ReservationService();

@@ -28,6 +28,7 @@ Set real values in `.env.production`:
 - `AUTH_COOKIE_SECURE=true`
 - `ADMIN_GOOGLE_SUBS` => comma-separated Google `sub` values for admin users
 - `SENTRY_DSN` / `SENTRY_*`
+- `POSTGRES_DB`, `POSTGRES_USER`, and a strong `POSTGRES_PASSWORD`
 - keep `REDIS_URL=redis://redis:6379`
 
 ## 3) First Deploy
@@ -37,7 +38,7 @@ chmod +x deploy/ec2/deploy.sh
 ./deploy/ec2/deploy.sh
 ```
 
-If certificate does not exist yet, script starts only `app` + `redis` and tells you to issue cert first.
+If certificate does not exist yet, script starts `postgres` + `redis` + `app` and tells you to issue cert first.
 
 ## 4) DNS + Security Group
 

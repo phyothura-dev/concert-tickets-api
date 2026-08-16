@@ -1,10 +1,11 @@
 import { type NextFunction, type Request, type Response } from 'express';
+import { env } from '../config/env';
 
 const ALLOWED_METHODS = 'GET,POST,PATCH,DELETE,OPTIONS';
 const ALLOWED_HEADERS = 'Content-Type,X-Correlation-ID';
 
 export function corsMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const frontendOrigin = process.env['FRONTEND_ORIGIN'];
+  const frontendOrigin = env.cors.frontendOrigin;
   const requestOrigin = req.header('Origin');
 
   if (frontendOrigin && requestOrigin === frontendOrigin) {

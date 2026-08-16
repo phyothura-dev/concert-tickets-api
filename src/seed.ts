@@ -1,11 +1,10 @@
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
-import { config } from 'dotenv';
+import './config/env';
 import AppDataSource from './data-source';
 import { Concert } from './entities/Concert';
 import { Ticket } from './entities/Ticket';
-
-config();
+import { logger } from './lib/logger';
 
 function daysFromNow(days: number): Date {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
@@ -90,6 +89,6 @@ async function seed(): Promise<void> {
 }
 
 seed().catch((err: unknown) => {
-  console.error('Seed failed', err);
+  logger.error({ err }, 'Seed failed');
   process.exitCode = 1;
 });

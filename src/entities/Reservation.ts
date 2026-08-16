@@ -25,11 +25,11 @@ export class Reservation {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
 
-  @Column({ type: "text" })
+  @Column({ type: "uuid" })
   concertId!: string;
 
   @Index()
-  @Column({ type: "text", nullable: true })
+  @Column({ type: "uuid", nullable: true })
   userId!: string | null;
 
   @ManyToOne(() => Concert, { onDelete: "CASCADE" })
@@ -37,7 +37,7 @@ export class Reservation {
   concert!: Concert;
 
   @Index()
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: 'uuid', nullable: true })
   ticketId!: string | null;
 
   @ManyToOne(() => Ticket, (ticket) => ticket.reservations, {
@@ -63,10 +63,10 @@ export class Reservation {
   @Column({ type: "text" })
   status!: ReservationStatus;
 
-  @Column({ type: "datetime" })
+  @Column({ type: "timestamptz" })
   expiresAt!: Date;
 
-  @CreateDateColumn({ type: "datetime" })
+  @CreateDateColumn({ type: "timestamptz" })
   createdAt!: Date;
 
   @OneToMany(() => ReservationSeat, (assignment) => assignment.reservation)

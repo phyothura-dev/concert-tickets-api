@@ -10,7 +10,7 @@ export class NotificationDevice {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'text' })
+  @Column({ type: 'uuid' })
   userId!: string;
 
   @ManyToOne(() => User, (user) => user.notificationDevices, { onDelete: 'CASCADE' })
@@ -26,12 +26,12 @@ export class NotificationDevice {
   @Column({ type: 'boolean', default: true })
   enabled!: boolean;
 
-  @Column({ type: 'datetime' })
+  @Column({ type: 'timestamptz' })
   lastSeenAt!: Date;
 
-  @CreateDateColumn({ type: 'datetime' })
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'datetime' })
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 }

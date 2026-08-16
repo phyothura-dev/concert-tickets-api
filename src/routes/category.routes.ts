@@ -4,7 +4,7 @@ import { requireAuthMiddleware } from '../middleware/auth.middleware';
 import { requireAdminMiddleware } from '../middleware/authorization.middleware';
 import { asyncHandler } from '../middleware/async-handler';
 import { validateBody, validateParams } from '../middleware/validate.middleware';
-import { CategoryService } from '../services/category.service';
+import { categoryService } from '../services/category.service';
 import {
   categoryParamsSchema,
   createCategorySchema,
@@ -15,7 +15,7 @@ import {
 } from '../validations/category.validation';
 
 export const categoryRouter = Router();
-const categoryService = new CategoryService();
+
 
 categoryRouter.get('/', asyncHandler(async (_req: Request, res: Response) => {
   const categories = await categoryService.listCategories();
