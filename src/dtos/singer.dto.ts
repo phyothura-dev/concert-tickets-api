@@ -1,4 +1,5 @@
 import type { Singer } from '../entities/Singer';
+import { toIsoString } from '../lib/format';
 import { toCategoryDto, type CategoryDto } from './category.dto';
 
 export type SingerDto = {
@@ -18,8 +19,8 @@ export function toSingerDto(singer: Singer): SingerDto {
     title: singer.title,
     categoryId: singer.categoryId,
     category: singer.category ? toCategoryDto(singer.category) : null,
-    createdAt: singer.createdAt.toISOString(),
-    updatedAt: singer.updatedAt.toISOString(),
+    createdAt: toIsoString(singer.createdAt),
+    updatedAt: toIsoString(singer.updatedAt),
   };
 }
 

@@ -11,6 +11,9 @@ import type { CreateConcertInput, ListConcertsQuery, UpdateConcertInput } from '
 import type { UploadedImage } from '../validations/image.validation';
 import { In, type EntityManager } from 'typeorm';
 import { ImageStorageService } from './image-storage.service';
+import { deleteCachePattern, getOrSetCache } from '../lib/cache';
+
+const CONCERT_CACHE_TTL = 900; // 15 minutes
 
 export type ConcertListItem = {
   id: string;
@@ -54,26 +57,29 @@ export class ConcertService {
   }
 
   async listConcerts(filters: ListConcertsQuery = {}): Promise<ConcertListItem[]> {
-    const query = AppDataSource.getRepository(Concert)
-      .createQueryBuilder('c')
-      .leftJoin(Ticket, 't', 't.concertId = c.id')
-      .select('c.id', 'id')
-      .addSelect('c.title', 'title')
-      .addSelect('c.venue', 'venue')
-      .addSelect('c.startsAt', 'startsAt')
-      .addSelect('c.imageUrl', 'imageUrl')
-      .addSelect('COALESCE(SUM(t.remainingStock), 0)', 'availableStock')
-      .addSelect('COALESCE(SUM(t.totalStock), 0)', 'totalStock')
-      .groupBy('c.id')
-      .addGroupBy('c.title')
-      .addGroupBy('c.venue')
-      .addGroupBy('c.startsAt')
-      .addGroupBy('c.imageUrl')
-      .orderBy('c.startsAt', 'ASC');
+    const cacheKey = `cache:concerts:list:${JSON.stringify(filters)}`;
 
-    if (filters.search) {
-      query.andWhere(
-        `(
+    return getOrSetCache(cacheKey, CONCERT_CACHE_TTL, async () => {
+      const query = AppDataSource.getRepository(Concert)
+        .createQueryBuilder('c')
+        .leftJoin(Ticket, 't', 't.concertId = c.id')
+        .select('c.id', 'id')
+        .addSelect('c.title', 'title')
+        .addSelect('c.venue', 'venue')
+        .addSelect('c.startsAt', 'startsAt')
+        .addSelect('c.imageUrl', 'imageUrl')
+        .addSelect('COALESCE(SUM(t.remainingStock), 0)', 'availableStock')
+        .addSelect('COALESCE(SUM(t.totalStock), 0)', 'totalStock')
+        .groupBy('c.id')
+        .addGroupBy('c.title')
+        .addGroupBy('c.venue')
+        .addGroupBy('c.startsAt')
+        .addGroupBy('c.imageUrl')
+        .orderBy('c.startsAt', 'ASC');
+
+      if (filters.search) {
+        query.andWhere(
+          `(
           LOWER(c.title) LIKE :search
           OR LOWER(c.venue) LIKE :search
           OR EXISTS (
@@ -84,58 +90,56 @@ export class ConcertService {
               AND LOWER(s_filter.name) LIKE :search
           )
         )`,
-        { search: `%${filters.search.toLowerCase()}%` },
-      );
-    }
-    if (filters.venue) {
-      query.andWhere('LOWER(c.venue) = :venue', {
-        venue: filters.venue.toLowerCase(),
-      });
-    }
-    if (filters.categoryId) {
-      query.andWhere(
-        `EXISTS (
+          { search: `%${filters.search.toLowerCase()}%` },
+        );
+      }
+      if (filters.venue) {
+        query.andWhere('LOWER(c.venue) = :venue', {
+          venue: filters.venue.toLowerCase(),
+        });
+      }
+      if (filters.categoryId) {
+        query.andWhere(
+          `EXISTS (
           SELECT 1
           FROM concert_categories cc_filter
           WHERE cc_filter."concertId" = c.id
             AND cc_filter."categoryId" = :categoryId
         )`,
-        { categoryId: filters.categoryId },
-      );
-    }
+          { categoryId: filters.categoryId },
+        );
+      }
 
-    const rows = await query.getRawMany<{
-      id: string;
-      title: string;
-      venue: string;
-      startsAt: string;
-      imageUrl: string | null;
-      availableStock: string;
-      totalStock: string;
-    }>();
+      const rows = await query.getRawMany<{
+        id: string;
+        title: string;
+        venue: string;
+        startsAt: string;
+        imageUrl: string | null;
+        availableStock: string;
+        totalStock: string;
+      }>();
 
-    const concertIds = rows.map((row) => row.id);
-    const [categoriesByConcertId, singersByConcertId] = await Promise.all([
-      this.getCategoriesByConcertId(concertIds),
-      this.getSingersByConcertId(concertIds),
-    ]);
+      const concertIds = rows.map((row) => row.id);
+      const [categoriesByConcertId, singersByConcertId] = await Promise.all([this.getCategoriesByConcertId(concertIds), this.getSingersByConcertId(concertIds)]);
 
-    return rows.map((r) => {
-      const categories = categoriesByConcertId.get(r.id) ?? [];
-      const singers = singersByConcertId.get(r.id) ?? [];
-      return {
-        id: r.id,
-        title: r.title,
-        venue: r.venue,
-        startsAt: new Date(r.startsAt).toISOString(),
-        imageUrl: r.imageUrl,
-        categoryIds: categories.map((category) => category.id),
-        categories,
-        singerIds: singers.map((singer) => singer.id),
-        singers,
-        availableStock: Number(r.availableStock),
-        totalStock: Number(r.totalStock),
-      };
+      return rows.map((r) => {
+        const categories = categoriesByConcertId.get(r.id) ?? [];
+        const singers = singersByConcertId.get(r.id) ?? [];
+        return {
+          id: r.id,
+          title: r.title,
+          venue: r.venue,
+          startsAt: new Date(r.startsAt).toISOString(),
+          imageUrl: r.imageUrl,
+          categoryIds: categories.map((category) => category.id),
+          categories,
+          singerIds: singers.map((singer) => singer.id),
+          singers,
+          availableStock: Number(r.availableStock),
+          totalStock: Number(r.totalStock),
+        };
+      });
     });
   }
 
@@ -255,12 +259,7 @@ export class ConcertService {
   }
 
   private async replaceConcertCategories(manager: EntityManager, concertId: string, categoryIds: string[]): Promise<void> {
-    await manager
-      .createQueryBuilder()
-      .delete()
-      .from('concert_categories')
-      .where('"concertId" = :concertId', { concertId })
-      .execute();
+    await manager.createQueryBuilder().delete().from('concert_categories').where('"concertId" = :concertId', { concertId }).execute();
 
     if (categoryIds.length > 0) {
       await manager
@@ -273,12 +272,7 @@ export class ConcertService {
   }
 
   private async replaceConcertSingers(manager: EntityManager, concertId: string, singerIds: string[]): Promise<void> {
-    await manager
-      .createQueryBuilder()
-      .delete()
-      .from('concert_singers')
-      .where('"concertId" = :concertId', { concertId })
-      .execute();
+    await manager.createQueryBuilder().delete().from('concert_singers').where('"concertId" = :concertId', { concertId }).execute();
 
     if (singerIds.length === 0) {
       return;
@@ -324,6 +318,7 @@ export class ConcertService {
       throw error;
     }
 
+    await deleteCachePattern('cache:concerts:*');
     return this.getConcertListItemOrThrow(concertId);
   }
 
@@ -367,6 +362,7 @@ export class ConcertService {
       await this.removeImageSafely(previousImageUrl);
     }
 
+    await deleteCachePattern('cache:concerts:*');
     return this.getConcertListItemOrThrow(id);
   }
 
@@ -387,6 +383,7 @@ export class ConcertService {
     });
 
     if (imageUrl) await this.removeImageSafely(imageUrl);
+    await deleteCachePattern('cache:concerts:*');
     return result;
   }
 }

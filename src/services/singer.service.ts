@@ -1,13 +1,19 @@
 import AppDataSource from '../data-source';
 import { Singer } from '../entities/Singer';
 import { NotFoundError } from '../lib/errors';
+import { getOrSetCache, deleteCache, deleteCachePattern } from '../lib/cache';
 import type { CreateSingerInput, UpdateSingerInput } from '../validations/singer.validation';
+
+const SINGERS_CACHE_KEY = 'cache:singers:all';
+const SINGERS_CACHE_TTL = 3600; // 1 hour
 
 export class SingerService {
   async listSingers(): Promise<Singer[]> {
-    return AppDataSource.getRepository(Singer).find({
-      relations: { category: true },
-      order: { name: 'ASC' },
+    return getOrSetCache(SINGERS_CACHE_KEY, SINGERS_CACHE_TTL, async () => {
+      return AppDataSource.getRepository(Singer).find({
+        relations: { category: true },
+        order: { name: 'ASC' },
+      });
     });
   }
 
@@ -26,6 +32,7 @@ export class SingerService {
     const repo = AppDataSource.getRepository(Singer);
     const singer = repo.create(input as Partial<Singer>);
     const saved = await repo.save(singer);
+    await this.invalidateCache();
     return this.getSinger(saved.id);
   }
 
@@ -34,6 +41,7 @@ export class SingerService {
     const singer = await this.getSinger(id);
     repo.merge(singer, input as never);
     const saved = await repo.save(singer);
+    await this.invalidateCache();
     return this.getSinger(saved.id);
   }
 
@@ -42,7 +50,15 @@ export class SingerService {
     if (!result.affected) {
       throw new NotFoundError('Singer not found', null, 'SINGER_NOT_FOUND');
     }
+    await this.invalidateCache();
     return { deleted: true };
+  }
+
+  private async invalidateCache(): Promise<void> {
+    await Promise.all([
+      deleteCache(SINGERS_CACHE_KEY),
+      deleteCachePattern('cache:concerts:*'),
+    ]);
   }
 }
 

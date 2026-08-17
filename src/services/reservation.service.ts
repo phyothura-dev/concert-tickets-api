@@ -6,6 +6,7 @@ import { Seat } from '../entities/Seat';
 import { Ticket } from '../entities/Ticket';
 import { ConflictError, ForbiddenError, NotFoundError } from '../lib/errors';
 import { withTransaction } from '../lib/transaction';
+import { deleteCache, deleteCachePattern } from '../lib/cache';
 import type { ReserveInput } from '../validations/reservation.validation';
 
 import { RESERVATION_HOLD_MS } from '../config/constants';
@@ -87,6 +88,12 @@ export class ReservationService {
       })));
       return reservation.id;
     });
+
+    await Promise.all([
+      deleteCache(`cache:tickets:seats:${input.ticketId}`),
+      deleteCachePattern('cache:concerts:*'),
+    ]);
+
     return this.getReservation(savedId, userId, 'USER');
   }
 
@@ -114,6 +121,12 @@ export class ReservationService {
     }
     reservation.status = status;
     await manager.save(Reservation, reservation);
+
+    await Promise.all([
+      deleteCache(`cache:tickets:seats:${reservation.ticketId}`),
+      deleteCachePattern('cache:concerts:*'),
+    ]);
+
     return count;
   }
 }

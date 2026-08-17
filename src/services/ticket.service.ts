@@ -6,7 +6,10 @@ import { Seat } from '../entities/Seat';
 import { Ticket, type TicketType } from '../entities/Ticket';
 import { ConflictError, NotFoundError } from '../lib/errors';
 import { withTransaction } from '../lib/transaction';
+import { getOrSetCache, deleteCache, deleteCachePattern } from '../lib/cache';
 import { CreateTicketInput, UpdateTicketInput } from '../validations/ticket.validation';
+
+const SEATS_CACHE_TTL = 300; // 5 minutes
 
 export class TicketService {
   private async saveTicket(
@@ -72,14 +75,16 @@ export class TicketService {
 
   async listSeats(ticketId: string): Promise<Seat[]> {
     await this.getTicket(ticketId);
-    return AppDataSource.getRepository(Seat).find({
-      where: { ticketId },
-      order: { sequence: 'ASC' },
+    return getOrSetCache(`cache:tickets:seats:${ticketId}`, SEATS_CACHE_TTL, async () => {
+      return AppDataSource.getRepository(Seat).find({
+        where: { ticketId },
+        order: { sequence: 'ASC' },
+      });
     });
   }
 
   async createTicket(input: CreateTicketInput): Promise<Ticket> {
-    return withTransaction(async (queryRunner) => {
+    const saved = await withTransaction(async (queryRunner) => {
       const manager = queryRunner.manager;
       const concertExists = await manager.exists(Concert, { where: { id: input.concertId } });
       if (!concertExists) {
@@ -103,14 +108,17 @@ export class TicketService {
         price: input.price,
         type: input.type,
       });
-      const saved = await this.saveTicket(ticket, manager);
-      await this.createSeats(saved, 1, saved.totalStock, manager);
-      return saved;
+      const created = await this.saveTicket(ticket, manager);
+      await this.createSeats(created, 1, created.totalStock, manager);
+      return created;
     });
+
+    await this.invalidateTicketCache(saved.id, saved.concertId);
+    return saved;
   }
 
   async updateTicket(id: string, input: UpdateTicketInput): Promise<Ticket> {
-    return withTransaction(async (queryRunner) => {
+    const saved = await withTransaction(async (queryRunner) => {
       const manager = queryRunner.manager;
       const ticket = await manager.findOne(Ticket, { where: { id } });
       if (!ticket) {
@@ -186,6 +194,9 @@ export class TicketService {
 
       return this.saveTicket(ticket, manager);
     });
+
+    await this.invalidateTicketCache(saved.id, saved.concertId);
+    return saved;
   }
 
   async deleteTicket(id: string): Promise<{ deleted: true }> {
@@ -200,7 +211,15 @@ export class TicketService {
       );
     }
     await AppDataSource.getRepository(Ticket).delete({ id });
+    await this.invalidateTicketCache(ticket.id, ticket.concertId);
     return { deleted: true };
+  }
+
+  private async invalidateTicketCache(ticketId: string, _concertId?: string): Promise<void> {
+    await Promise.all([
+      deleteCache(`cache:tickets:seats:${ticketId}`),
+      deleteCachePattern('cache:concerts:*'),
+    ]);
   }
 }
 

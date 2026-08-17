@@ -8,6 +8,7 @@ import type { UploadedImage } from '../validations/image.validation';
 import type { PaymentListQuery, ReviewPaymentInput } from '../validations/payment.validation';
 import { ImageStorageService } from './image-storage.service';
 import { ReservationService } from './reservation.service';
+import { deleteCache } from '../lib/cache';
 
 import { PAYMENT_REVIEW_HOLD_MS } from '../config/constants';
 const paymentRelations = {
@@ -156,6 +157,12 @@ export class PaymentService {
       return 'DONE' as const;
     });
     if (outcome === 'EXPIRED') throw new ConflictError('RESERVATION_EXPIRED', 'Reservation expired');
+    if (input.decision === 'APPROVE') {
+      const payment = await this.getPayment(id);
+      if (payment.reservation?.ticketId) {
+        await deleteCache(`cache:tickets:seats:${payment.reservation.ticketId}`);
+      }
+    }
     return this.getPayment(id);
   }
 
