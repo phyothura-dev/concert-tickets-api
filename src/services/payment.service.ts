@@ -48,13 +48,12 @@ export class PaymentService {
     return payment;
   }
 
-  async list(query: PaymentListQuery): Promise<{ items: PaymentSubmission[]; total: number; page: number; limit: number }> {
+  async list(query: PaymentListQuery): Promise<{ items: PaymentSubmission[]; total: number }> {
     const where = query.status ? { status: query.status as PaymentStatus } : {};
     const [items, total] = await AppDataSource.getRepository(PaymentSubmission).findAndCount({
       where, relations: paymentRelations, order: { submittedAt: 'DESC' },
-      skip: (query.page - 1) * query.limit, take: query.limit,
     });
-    return { items, total, page: query.page, limit: query.limit };
+    return { items, total };
   }
 
   async submit(

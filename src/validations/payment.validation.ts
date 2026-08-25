@@ -9,8 +9,6 @@ export const paymentParamsSchema = z.object({
 
 export const paymentListQuerySchema = z.object({
   status: z.enum(['PENDING_REVIEW', 'APPROVED', 'REJECTED', 'EXPIRED']).optional(),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
 }).strict();
 
 export const reviewPaymentSchema = z.discriminatedUnion('decision', [
